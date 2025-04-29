@@ -11,7 +11,7 @@
     <PackageVersion Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.3.0" />
     <PackageVersion Include="Npgsql" Version="9.0.3" />
     <PackageVersion Include="Sinch" Version="1.2.0" />
-    <PackageVersion Include="SonarAnalyzer.CSharp" Version="10.7.0.110445" />
+    <PackageVersion Include="SonarAnalyzer.CSharp" Version="10.8.0.113526" />
     <!-- SharedKernel -->
     <PackageVersion Include="MediatR.Contracts" Version="2.0.1" />
     <!-- Application -->
