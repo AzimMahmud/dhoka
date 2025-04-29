@@ -1,0 +1,63 @@
+﻿using System.Linq.Expressions;
+using Application.Abstractions.Data;
+using Application.Abstractions.Messaging;
+using Domain.Posts;
+using SharedKernel;
+
+namespace Application.Posts.Get;
+
+internal sealed class GetPostsQueryHandler(IApplicationDbContext context)
+    : IQueryHandler<GetPostsQuery, PagedList<PostsResponse>>
+{
+    public async Task<Result<PagedList<PostsResponse>>> Handle(GetPostsQuery request,
+        CancellationToken cancellationToken)
+    {
+        IQueryable<Post> productsQuery = context.Posts;
+
+        if (!string.IsNullOrWhiteSpace(request.SearchTerm))
+        {
+            productsQuery = productsQuery.Where(p =>
+                p.Title.Contains(request.SearchTerm) ||
+                p.PaymentType.Contains(request.SearchTerm) ||
+                p.TransactionMode.Contains(request.SearchTerm) ||
+                p.MobilNumbers.Contains(request.SearchTerm));
+        }
+
+        if (request.SortOrder?.ToLower() == "desc")
+        {
+            productsQuery = productsQuery.OrderByDescending(GetSortProperty(request));
+        }
+        else
+        {
+            productsQuery = productsQuery.OrderBy(GetSortProperty(request));
+        }
+        
+        IQueryable<PostsResponse> productResponsesQuery = productsQuery
+            .Select(p => new PostsResponse(
+                p.Id,
+                p.Title,
+                p.TransactionMode,
+                p.PaymentType,
+                p.Description,
+                p.MobilNumbers,
+                p.Amount,
+                p.Status,
+                p.CreatedAt));
+
+        var posts = await PagedList<PostsResponse>.CreateAsync(
+            productResponsesQuery,
+            request.Page,
+            request.PageSize);
+
+        return posts;
+    }
+
+    private static Expression<Func<Post, object>> GetSortProperty(GetPostsQuery request) =>
+        request.SortColumn?.ToLower() switch
+        {
+            "title" => product => product.Title,
+            "transactionMode" => product => product.TransactionMode,
+            "paymentType" => product => product.PaymentType,
+            _ => product => product.Id
+        };
+}

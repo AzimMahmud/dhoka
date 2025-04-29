@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <ItemGroup>
+        <PackageReference Include="AspNetCore.HealthChecks.NpgSql"/>
+        <PackageReference Include="AWSSDK.CloudFront"/>
+        <PackageReference Include="AWSSDK.S3"/>
+        <PackageReference Include="EFCore.NamingConventions"/>
+        <PackageReference Include="Mailjet.Api" />
+        <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer"/>
+        <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks"/>
+        <PackageReference Include="Newtonsoft.Json"/>
+        <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL"/>
+        <PackageReference Include="Twilio"/>
+
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Application\Application.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="ArchitectureTests"/>
+    </ItemGroup>
+
+</Project>
