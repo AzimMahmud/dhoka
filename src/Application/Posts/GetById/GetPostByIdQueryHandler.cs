@@ -13,6 +13,7 @@ internal sealed class GetPostByIdQueryHandler(IApplicationDbContext context)
     {
         PostResponse? post = await context.Posts
             .Where(todoItem => todoItem.Id == query.PostId)
+            .AsNoTracking()
             .Select(post => new PostResponse(
                     post.Id,
                     post.Title,

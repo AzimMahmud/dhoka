@@ -9,7 +9,7 @@ internal sealed class GetImageQueryHandler(IApplicationDbContext context) : IQue
 {
     public async Task<Result<List<string>>> Handle(GetImageQuery request, CancellationToken cancellationToken)
     {
-        List<string>? imageUrls = await context.Posts.Where(x => x.Id == request.PostId).Select(x => x.ImageUrls)
+        List<string>? imageUrls = await context.Posts.Where(x => x.Id == request.PostId).AsNoTracking().Select(x => x.ImageUrls)
             .FirstOrDefaultAsync(cancellationToken: cancellationToken);
 
         return Result.Success(imageUrls ?? new List<string>());

@@ -2,6 +2,7 @@
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Domain.Posts;
+using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
 namespace Application.Posts.Get;
@@ -33,6 +34,7 @@ internal sealed class GetPostsQueryHandler(IApplicationDbContext context)
         }
         
         IQueryable<PostsResponse> productResponsesQuery = productsQuery
+            .AsNoTracking()
             .Select(p => new PostsResponse(
                 p.Id,
                 p.Title,

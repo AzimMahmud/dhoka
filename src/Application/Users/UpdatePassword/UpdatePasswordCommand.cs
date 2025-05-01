@@ -27,7 +27,7 @@ internal class UpdatePasswordCommandHandler(IApplicationDbContext context, IPass
         }
         
         
-        if (!string.Equals(request.Password, request.ConfirmPassword, StringComparison.CurrentCultureIgnoreCase))
+        if (request.Password != request.ConfirmPassword)
         {
             return Result.Failure<Guid>(UserErrors.PasswordNotMatch);
         }
