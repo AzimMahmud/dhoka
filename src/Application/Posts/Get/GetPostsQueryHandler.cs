@@ -32,7 +32,13 @@ internal sealed class GetPostsQueryHandler(IApplicationDbContext context)
         {
             productsQuery = productsQuery.OrderBy(GetSortProperty(request));
         }
-        
+
+        productsQuery = string.IsNullOrEmpty(request.Status)
+            ? productsQuery.Where(x => x.Status.ToLower() == nameof(Status.Approved).ToLower())
+            : productsQuery.Where(x => x.Status.ToLower() ==  request.Status.ToLower());
+
+
+        productsQuery = productsQuery.Where(x => x.Status != nameof(Status.Init));
         IQueryable<PostsResponse> productResponsesQuery = productsQuery
             .AsNoTracking()
             .Select(p => new PostsResponse(

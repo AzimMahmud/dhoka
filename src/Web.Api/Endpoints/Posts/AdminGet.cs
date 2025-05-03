@@ -14,10 +14,11 @@ internal sealed class AdminGet : IEndpoint
         app.MapGet("admin/posts", async (string? searchTerm,
                 string? sortColumn,
                 string? sortOrder,
+                string status,
                 int page,
-                int pageSize, ISender sender, CancellationToken cancellationToken) =>
+                int pageSize,  ISender sender, CancellationToken cancellationToken) =>
         {
-            var command = new GetPostsQuery(searchTerm, sortColumn, sortOrder, page, pageSize);
+            var command = new GetPostsQuery(searchTerm, sortColumn, sortOrder, status,page, pageSize);
 
             Result<PagedList<PostsResponse>> result = await sender.Send(command, cancellationToken);
 

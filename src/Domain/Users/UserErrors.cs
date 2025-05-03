@@ -20,6 +20,10 @@ public static class UserErrors
         "Users.EmailNotUnique",
         "The provided email is not unique");
     
+    public static readonly Error TokenInvalid = Error.Conflict(
+        "Users.EmailVerificationToken",
+        "The provided token isn't valid."); 
+    
     public static readonly Error PasswordNotMatch = Error.Conflict(
         "Users.PasswordNotMatch",
         "The provided password and confirm password aren't same.");
