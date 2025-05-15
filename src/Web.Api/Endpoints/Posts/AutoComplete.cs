@@ -1,4 +1,5 @@
 ﻿using Application.Posts.AutoComplete;
+using Domain.Posts;
 using MediatR;
 using SharedKernel;
 using Web.Api.Extensions;
@@ -10,16 +11,14 @@ internal sealed class AutoComplete : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
-        app.MapGet("posts/autocomplete", async (string? searchTerm, ISender sender, CancellationToken cancellationToken) =>
+        app.MapGet("posts/autocomplete", async ([AsParameters]AutocompleteRequest request, ISender sender, CancellationToken cancellationToken) =>
             {
-                var command = new AutoCompleteQuery(searchTerm);
+                var command = new AutoCompleteQuery(request);
 
-                Result<List<AutoCompleteResponse>> result = await sender.Send(command, cancellationToken);
+                Result<List<string>> result = await sender.Send(command, cancellationToken);
 
                 return result.Match(Results.Ok, CustomResults.Problem);
             })
-            .WithTags(Tags.Posts)
-            // .RequireAuthorization()
-            ;
+            .WithTags(Tags.Posts);
     }
 }

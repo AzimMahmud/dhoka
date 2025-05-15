@@ -3,6 +3,7 @@
     <ItemGroup>
         <PackageReference Include="AspNetCore.HealthChecks.NpgSql"/>
         <PackageReference Include="AWSSDK.CloudFront"/>
+        <PackageReference Include="AWSSDK.DynamoDBv2" />
         <PackageReference Include="AWSSDK.S3"/>
         <PackageReference Include="EFCore.NamingConventions"/>
         <PackageReference Include="Mailjet.Api" />
@@ -15,11 +16,11 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Application\Application.csproj"/>
+        <InternalsVisibleTo Include="ArchitectureTests"/>
     </ItemGroup>
 
     <ItemGroup>
-        <InternalsVisibleTo Include="ArchitectureTests"/>
+      <ProjectReference Include="..\Application\Application.csproj" />
     </ItemGroup>
 
 </Project>

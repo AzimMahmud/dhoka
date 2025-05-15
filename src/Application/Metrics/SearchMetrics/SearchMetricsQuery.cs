@@ -45,5 +45,5 @@ internal class SearchMetricsQueryHandler(IApplicationDbContext db, IMemoryCache 
     
     public Task<int> TotalSettledPosts() =>
         GetMetricAsync("TotalSettledPosts", () => 
-            db.Posts.Where(p => p.IsSettled).CountAsync());
+            db.Posts.Where(p => p.IsSettled.Value).CountAsync());
 }

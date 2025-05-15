@@ -6,14 +6,16 @@ using SharedKernel;
 
 namespace Application.Posts.Delete;
 
-internal sealed class DeletePostCommandHandler(IApplicationDbContext context, IImageService imageService)
+internal sealed class DeletePostCommandHandler(IPostRepository postRepository, IImageService imageService)
     : ICommandHandler<DeletePostCommand>
 {
     public async Task<Result> Handle(DeletePostCommand command, CancellationToken cancellationToken)
     {
-        Post? post = await context.Posts
-            .SingleOrDefaultAsync(t => t.Id == command.PostId, cancellationToken);
+        // Post? post = await context.Posts
+        //     .SingleOrDefaultAsync(t => t.Id == command.PostId, cancellationToken);
 
+        Post? post =  await postRepository.GetByIdAsync(command.PostId);
+        
         if (post is null)
         {
             return Result.Failure(PostErrors.NotFound(command.PostId));
@@ -30,9 +32,11 @@ internal sealed class DeletePostCommandHandler(IApplicationDbContext context, II
             await imageService.DeleteImageFromCloudFrontUrlAsync(post.ImageUrls);
         }
 
-        context.Posts.Remove(post);
-
-        await context.SaveChangesAsync(cancellationToken);
+        await postRepository.DeleteAsync(command.PostId);
+        
+        // context.Posts.Remove(post);
+        //
+        // await context.SaveChangesAsync(cancellationToken);
 
         return Result.Success();
     }

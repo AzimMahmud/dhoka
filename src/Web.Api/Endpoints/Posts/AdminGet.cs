@@ -1,5 +1,8 @@
 ﻿using Application.Posts.Get;
+using Domain;
+using Domain.Posts;
 using Domain.Roles;
+using Infrastructure.Posts;
 using MediatR;
 using SharedKernel;
 using Web.Api.Extensions;
@@ -11,16 +14,11 @@ internal sealed class AdminGet : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
-        app.MapGet("admin/posts", async (string? searchTerm,
-                string? sortColumn,
-                string? sortOrder,
-                string status,
-                int page,
-                int pageSize,  ISender sender, CancellationToken cancellationToken) =>
+        app.MapGet("admin/posts", async ([AsParameters]PostSearchRequest request,  ISender sender, CancellationToken cancellationToken) =>
         {
-            var command = new GetPostsQuery(searchTerm, sortColumn, sortOrder, status,page, pageSize);
+            var command = new GetPostsQuery(request);
 
-            Result<PagedList<PostsResponse>> result = await sender.Send(command, cancellationToken);
+            Result<PagedResult<PostsResponse>> result = await sender.Send(command, cancellationToken);
 
             return result.Match(Results.Ok, CustomResults.Problem);
         })

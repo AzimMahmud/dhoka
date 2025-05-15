@@ -1,13 +1,22 @@
-﻿using System.Text;
+﻿
+using System.Text;
+using Amazon;
 using Amazon.CloudFront;
+using Amazon.DynamoDBv2;
+using Amazon.DynamoDBv2.DataModel;
+using Amazon.Runtime;
 using Amazon.S3;
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
+using Domain.Comments;
+using Domain.Posts;
 using Infrastructure.Authentication;
 using Infrastructure.Authorization;
+using Infrastructure.Comments;
 using Infrastructure.Database;
 using Infrastructure.ImageServices;
 using Infrastructure.MessageServices;
+using Infrastructure.Posts;
 using Infrastructure.Time;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -76,6 +85,14 @@ public static class DependencyInjection
 
         services.AddScoped<IApplicationDbContext>(sp => sp.GetRequiredService<ApplicationDbContext>());
         
+        var credentials = new BasicAWSCredentials(configuration["AWS:AccessKey"], configuration["AWS:SecretKey"]);
+        services.AddSingleton<IAmazonDynamoDB>(_ => new AmazonDynamoDBClient(credentials, RegionEndpoint.APSoutheast1));
+        
+        
+     
+        services.AddScoped<IDynamoDBContext, DynamoDBContext>();
+        services.AddScoped<IPostRepository, PostRepository>();
+        services.AddScoped<ICommentRepository, CommentRepository>();
         
         return services;
     }

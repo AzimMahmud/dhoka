@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <PackageReference Include="Npgsql" />
+    <PackageReference Include="AWSSDK.DynamoDBv2" />
   </ItemGroup>
 
 </Project>

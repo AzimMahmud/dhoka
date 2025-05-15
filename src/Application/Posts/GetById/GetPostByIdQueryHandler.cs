@@ -6,31 +6,43 @@ using SharedKernel;
 
 namespace Application.Posts.GetById;
 
-internal sealed class GetPostByIdQueryHandler(IApplicationDbContext context)
+internal sealed class GetPostByIdQueryHandler(IPostRepository postRepository)
     : IQueryHandler<GetPostByIdQuery, PostResponse>
 {
     public async Task<Result<PostResponse>> Handle(GetPostByIdQuery query, CancellationToken cancellationToken)
     {
-        PostResponse? post = await context.Posts
-            .Where(todoItem => todoItem.Id == query.PostId)
-            .AsNoTracking()
-            .Select(post => new PostResponse(
-                    post.Id,
-                    post.Title,
-                    post.TransactionMode,
-                    post.PaymentType,
-                    post.Description,
-                    post.MobilNumbers,
-                    post.Amount,
-                    post.Status
-                ))
-                .SingleOrDefaultAsync(cancellationToken);
+        Post? post =  await postRepository.GetByIdAsync(query.PostId);
+        
+        
+        // PostResponse? post = await context.Posts
+        //     .Where(todoItem => todoItem.Id == query.PostId)
+        //     .AsNoTracking()
+        //     .Select(post => new PostResponse(
+        //             post.Id,
+        //             post.Title,
+        //             post.TransactionMode,
+        //             post.PaymentType,
+        //             post.Description,
+        //             post.MobilNumbers,
+        //             post.Amount,
+        //             post.Status
+        //         ))
+        //         .SingleOrDefaultAsync(cancellationToken);
 
         if (post is null)
         {
             return Result.Failure<PostResponse>(PostErrors.NotFound(query.PostId));
         }
 
-        return post;
+        return new PostResponse(
+            post.Id,
+            post.Title,
+            post.TransactionMode,
+            post.PaymentType,
+            post.Description,
+            post.MobilNumbers,
+            post.Amount,
+            post.Status
+        );
     }
 }

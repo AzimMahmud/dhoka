@@ -7,13 +7,15 @@ using SharedKernel;
 namespace Application.Posts.Reject;
 
 internal sealed class RejectPostCommandHandler(
-    IApplicationDbContext context)
+    IPostRepository postRepository)
     : ICommandHandler<RejectPostCommand>
 {
     public async Task<Result> Handle(RejectPostCommand command, CancellationToken cancellationToken)
     {
-        Post? post = await context.Posts
-            .SingleOrDefaultAsync(t => t.Id == command.PostId, cancellationToken);
+        // Post? post = await context.Posts
+        //     .SingleOrDefaultAsync(t => t.Id == command.PostId, cancellationToken);
+        
+        Post? post =  await postRepository.GetByIdAsync(command.PostId);
 
         if (post is null)
         {
@@ -27,7 +29,9 @@ internal sealed class RejectPostCommandHandler(
         
         post.Status = nameof(Status.Rejected);
 
-        await context.SaveChangesAsync(cancellationToken);
+        await postRepository.UpdateAsync(post);
+        
+        // await context.SaveChangesAsync(cancellationToken);
 
         return Result.Success();
     }

@@ -1,5 +1,6 @@
 ﻿using Application.Abstractions.Messaging;
 using Application.Comments.Get;
+using Domain.Comments;
 
 namespace Application.Posts.Comment;
 

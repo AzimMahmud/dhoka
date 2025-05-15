@@ -1,10 +1,7 @@
 ﻿using Application.Abstractions.Messaging;
+using Domain;
+using Domain.Posts;
 
 namespace Application.Posts.Get;
 
-public sealed record GetPostsQuery(string? SearchTerm,
-    string? SortColumn,
-    string? SortOrder,
-    string Status,
-    int Page,
-    int PageSize) : IQuery<PagedList<PostsResponse>>;
+public sealed record GetPostsQuery(PostSearchRequest SearchRequest) : IQuery<PagedResult<PostsResponse>>;

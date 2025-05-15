@@ -18,6 +18,7 @@ builder.Services
     .AddPresentation()
     .AddInfrastructure(builder.Configuration);
 
+
 builder.Services.AddEndpoints(Assembly.GetExecutingAssembly());
 
 WebApplication app = builder.Build();

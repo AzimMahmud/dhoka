@@ -1,9 +1,12 @@
-﻿using SharedKernel;
+﻿using Amazon.DynamoDBv2.DataModel;
+using SharedKernel;
 
 namespace Domain.Comments;
 
-public class Comment : Entity
+[DynamoDBTable("Comments")]
+public class Comment
 {
+    [DynamoDBHashKey]
     public Guid Id { get; set; }
     public Guid PostId { get; set; }
     public string ContactInfo { get; set; }

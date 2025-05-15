@@ -1,4 +1,6 @@
 ﻿using Application.Posts.Search;
+using Domain;
+using Domain.Posts;
 using MediatR;
 using SharedKernel;
 using Web.Api.Extensions;
@@ -10,15 +12,11 @@ internal sealed class Get : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
-        app.MapGet("posts/search", async (string? searchTerm,
-                string? sortColumn,
-                string? sortOrder,
-                int page,
-                int pageSize, ISender sender, CancellationToken cancellationToken) =>
+        app.MapGet("posts/search", async ([AsParameters]PostSearchRequest request,   ISender sender, CancellationToken cancellationToken) =>
             {
-                var query = new SearchPostsQuery(searchTerm, sortColumn, sortOrder, page, pageSize);
+                var query = new SearchPostsQuery(request);
 
-                Result<SearchPagedList> result = await sender.Send(query, cancellationToken);
+                Result<PagedResult<PostsResponse>> result = await sender.Send(query, cancellationToken);
 
                 return result.Match(Results.Ok, CustomResults.Problem);
             })

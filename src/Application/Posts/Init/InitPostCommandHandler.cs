@@ -5,7 +5,7 @@ using SharedKernel;
 
 namespace Application.Posts.Init;
 
-internal sealed class InitPostCommandHandler(IApplicationDbContext context, IDateTimeProvider dateTimeProvider) : ICommandHandler<InitPostCommand, Guid>
+internal sealed class InitPostCommandHandler(IPostRepository postRepository, IDateTimeProvider dateTimeProvider) : ICommandHandler<InitPostCommand, Guid>
 {
     public async Task<Result<Guid>> Handle(InitPostCommand request, CancellationToken cancellationToken)
     {
@@ -16,10 +16,7 @@ internal sealed class InitPostCommandHandler(IApplicationDbContext context, IDat
             CreatedAt = dateTimeProvider.UtcNow
         };
         
-         
-        context.Posts.Add(post);
-
-        await context.SaveChangesAsync(cancellationToken);
+        await postRepository.CreateAsync(post);
 
         return post.Id;
         

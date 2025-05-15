@@ -8,16 +8,18 @@ using SharedKernel;
 namespace Application.Posts.SendToken;
 
 internal class SendTokenCommandHandler(
-    IApplicationDbContext context,
+    IPostRepository postRepository,
     IDateTimeProvider dateTimeProvider,
     ISmsSender smsSender)
     : ICommandHandler<SendTokenCommand, int>
 {
     public async Task<Result<int>> Handle(SendTokenCommand command, CancellationToken cancellationToken)
     {
-        Post? post = await context.Posts.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Id == command.PostId, cancellationToken: cancellationToken);
+        // Post? post = await context.Posts.AsNoTracking()
+        //     .FirstOrDefaultAsync(x => x.Id == command.PostId, cancellationToken: cancellationToken);
 
+        Post? post =  await postRepository.GetByIdAsync(command.PostId);
+        
         if (post is null)
         {
             return Result.Failure<int>(PostErrors.NotFound(command.PostId));
@@ -33,12 +35,14 @@ internal class SendTokenCommandHandler(
                 post.Otp = otp;
                 post.ContactNumber = command.PhoneNumber;
                 post.OtpExpirationTime = dateTimeProvider.UtcNow.AddMinutes(10);
-                context.Posts.Update(post);
-                await context.SaveChangesAsync(cancellationToken);
+                
+                await postRepository.UpdateAsync(post);
+                // context.Posts.Update(post);
+                // await context.SaveChangesAsync(cancellationToken);
             }
             return Result.Success(otp);
         }
-        catch(Exception ex) 
+        catch(Exception ex)
         {
             return Result.Success(0);
         }

@@ -7,14 +7,17 @@ using SharedKernel;
 namespace Application.Posts.Verify;
 
 internal sealed class VerifyPostCommandHandler(
-    IApplicationDbContext context,
+    IPostRepository postRepository,
     IDateTimeProvider dateTimeProvider)
     : ICommandHandler<VerifyPostCommand, Guid>
 {
     public async Task<Result<Guid>> Handle(VerifyPostCommand command, CancellationToken cancellationToken)
     {
-        Post? post = await context.Posts.FirstOrDefaultAsync(x =>
-            x.Id == command.PostId && x.Otp == command.Otp, cancellationToken: cancellationToken);
+        Post? post =  await postRepository.GetByIdAsync(command.PostId);
+        
+       
+        // Post? post = await context.Posts.FirstOrDefaultAsync(x =>
+        //     x.Id == command.PostId && x.Otp == command.Otp, cancellationToken: cancellationToken);
 
         if (post is null )
         {
@@ -34,7 +37,10 @@ internal sealed class VerifyPostCommandHandler(
         post.Amount = command.Amount;
         post.Status = nameof(Status.Pending);
 
-        await context.SaveChangesAsync(cancellationToken);
+
+        await postRepository.UpdateAsync(post);
+        
+        // await context.SaveChangesAsync(cancellationToken);
 
         return post.Id;
     }

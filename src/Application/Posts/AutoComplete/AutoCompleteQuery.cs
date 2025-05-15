@@ -1,7 +1,8 @@
 ﻿
 
 using Application.Abstractions.Messaging;
+using Domain.Posts;
 
 namespace Application.Posts.AutoComplete;
 
-public record AutoCompleteQuery(string? SearchTerm) : IQuery<List<AutoCompleteResponse>>;
+public record AutoCompleteQuery(AutocompleteRequest SearchRequest) : IQuery<List<string>>;
