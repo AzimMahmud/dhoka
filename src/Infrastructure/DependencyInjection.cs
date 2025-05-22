@@ -1,5 +1,4 @@
-﻿
-using System.Text;
+﻿using System.Text;
 using Amazon;
 using Amazon.CloudFront;
 using Amazon.DynamoDBv2;
@@ -17,17 +16,18 @@ using Infrastructure.Database;
 using Infrastructure.ImageServices;
 using Infrastructure.MessageServices;
 using Infrastructure.Posts;
-using Infrastructure.Time;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
+using OpenSearch.Client;
 using SharedKernel;
+using DateTimeProvider = Infrastructure.Time.DateTimeProvider;
+using IDateTimeProvider = SharedKernel.IDateTimeProvider;
 
 
 namespace Infrastructure;
@@ -66,11 +66,11 @@ public static class DependencyInjection
 
         services.AddMemoryCache();
 
-        
+
         services.AddSingleton<PasswordHasher>();
         services.AddScoped<TokenProvider>();
 
-        
+
         return services;
     }
 
@@ -84,16 +84,29 @@ public static class DependencyInjection
             .UseSnakeCaseNamingConvention());
 
         services.AddScoped<IApplicationDbContext>(sp => sp.GetRequiredService<ApplicationDbContext>());
-        
+
         var credentials = new BasicAWSCredentials(configuration["AWS:AccessKey"], configuration["AWS:SecretKey"]);
         services.AddSingleton<IAmazonDynamoDB>(_ => new AmazonDynamoDBClient(credentials, RegionEndpoint.APSoutheast1));
-        
-        
-     
+
+        services.AddSingleton<IOpenSearchClient>(sp =>
+        {
+            IConfiguration configuration = sp.GetRequiredService<IConfiguration>();
+            string? url = configuration["AWS:OpenSearch:Url"];
+            string? username = configuration["AWS:OpenSearch:Username"];
+            string? password = configuration["AWS:OpenSearch:Password"];
+            ConnectionSettings? settings = new ConnectionSettings(new Uri(url))
+                .BasicAuthentication(username, password)
+                .DefaultIndex("dhoka-data-index")
+                .DefaultFieldNameInferrer(p => p);
+
+            return new OpenSearchClient(settings);
+        });
+
         services.AddScoped<IDynamoDBContext, DynamoDBContext>();
         services.AddScoped<IPostRepository, PostRepository>();
         services.AddScoped<ICommentRepository, CommentRepository>();
-        
+        services.AddScoped<IPostCounterRepository, PostCounterRepository>();
+
         return services;
     }
 

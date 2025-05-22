@@ -1,4 +1,5 @@
 ﻿using Application.Abstractions.Messaging;
+using Domain.Comments;
 
 namespace Application.Comments.GetById;
 

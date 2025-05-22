@@ -1,5 +1,4 @@
 ﻿using Application.Abstractions.Messaging;
-using Application.Posts.Get;
 
 namespace Application.Users.Get;
 

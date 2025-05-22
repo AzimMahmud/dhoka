@@ -1,6 +1,5 @@
-﻿using Application.Abstractions.Data;
-using Application.Abstractions.Messaging;
-using Microsoft.EntityFrameworkCore;
+﻿using Application.Abstractions.Messaging;
+using Domain.Posts;
 using Microsoft.Extensions.Caching.Memory;
 using SharedKernel;
 
@@ -8,7 +7,7 @@ namespace Application.Metrics.SearchMetrics;
 
 public sealed record SearchMetricsQuery : IQuery<SearchMetricDto>;
 
-internal class SearchMetricsQueryHandler(IApplicationDbContext db, IMemoryCache cache)
+internal class SearchMetricsQueryHandler(IPostCounterRepository repository, IMemoryCache cache)
     : IQueryHandler<SearchMetricsQuery, SearchMetricDto>
 {
     public async Task<Result<SearchMetricDto>> Handle(SearchMetricsQuery request, CancellationToken cancellationToken)
@@ -34,16 +33,15 @@ internal class SearchMetricsQueryHandler(IApplicationDbContext db, IMemoryCache 
     }
 
     public Task<int> TotalSearches() =>
-        GetMetricAsync("TotalSearches", () => db.SearchEvents.CountAsync());
+        GetMetricAsync("TotalSearches", () => repository.GetCountAsync("Search"));
 
     public Task<int> TotalPosts() =>
-        GetMetricAsync("TotalPosts", () => db.Posts.Where(p => p.Status != nameof(Domain.Posts.Status.Init)).CountAsync());
+        GetMetricAsync("TotalPosts", () => repository.GetCountAsync("Posts"));
 
     public Task<int> TotalApprovedPosts() =>
-        GetMetricAsync("TotalApprovedPosts", () => 
-            db.Posts.Where(p => p.Status == nameof(Domain.Posts.Status.Approved)).CountAsync());
-    
+        GetMetricAsync("TotalApprovedPosts", () => repository.GetCountAsync(nameof(Status.Approved)));
+
     public Task<int> TotalSettledPosts() =>
-        GetMetricAsync("TotalSettledPosts", () => 
-            db.Posts.Where(p => p.IsSettled.Value).CountAsync());
+        GetMetricAsync("TotalSettledPosts", () =>
+            repository.GetCountAsync(nameof(Status.Settled)));
 }

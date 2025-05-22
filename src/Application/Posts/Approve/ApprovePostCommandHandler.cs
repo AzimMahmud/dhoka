@@ -1,24 +1,17 @@
-﻿using Application.Abstractions.Data;
-using Application.Abstractions.Messaging;
+﻿using Application.Abstractions.Messaging;
 using Domain.Posts;
-using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
 namespace Application.Posts.Approve;
 
 internal sealed class ApprovePostCommandHandler(
-    IPostRepository postRepository)
+    IPostRepository postRepository, IPostCounterRepository postCounterRepository)
     : ICommandHandler<ApprovePostCommand>
 {
     public async Task<Result> Handle(ApprovePostCommand command, CancellationToken cancellationToken)
     {
-        // Post? post = await context.Posts
-        //     .SingleOrDefaultAsync(t => t.Id == command.PostId, cancellationToken);
-        
-        
         Post? post =  await postRepository.GetByIdAsync(command.PostId);
-
-
+        
         if (post is null)
         {
             return Result.Failure(PostErrors.NotFound(command.PostId));
@@ -28,13 +21,11 @@ internal sealed class ApprovePostCommandHandler(
         {
             return Result.Failure(PostErrors.AlreadyApproved(command.PostId));
         }
-        
 
         post.Status = nameof(Status.Approved);
         
        await postRepository.UpdateAsync(post);
-        
-        // await context.SaveChangesAsync(cancellationToken);
+       await postCounterRepository.IncrementAsync(nameof(Status.Approved), 1);
 
         return Result.Success();
     }

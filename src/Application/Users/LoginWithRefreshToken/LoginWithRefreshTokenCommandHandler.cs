@@ -2,7 +2,6 @@
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Domain.Tokens;
-using Domain.Users;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 

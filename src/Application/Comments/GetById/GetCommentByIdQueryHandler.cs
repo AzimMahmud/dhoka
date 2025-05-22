@@ -1,26 +1,27 @@
-﻿using Application.Abstractions.Data;
-using Application.Abstractions.Messaging;
+﻿using Application.Abstractions.Messaging;
 using Domain.Comments;
-using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
 namespace Application.Comments.GetById;
 
-internal sealed class GetCommentByIdQueryHandler(IApplicationDbContext context)
+internal sealed class GetCommentByIdQueryHandler(ICommentRepository commentRepository)
     : IQueryHandler<GetCommentByIdQuery, CommentResponse>
 {
     public async Task<Result<CommentResponse>> Handle(GetCommentByIdQuery query, CancellationToken cancellationToken)
     {
-        CommentResponse? comment = await context.Comments
-            .Where(comment => comment.Id == query.CommentId )
-            .Select(post => new CommentResponse(
-                    post.Id,
-                    post.PostId,
-                    post.ContactInfo,
-                    post.Description,
-                    post.CreatedAt
-                ))
-                .SingleOrDefaultAsync(cancellationToken);
+        // CommentResponse? comment = await context.Comments
+        //     .Where(comment => comment.Id == query.CommentId )
+        //     .Select(post => new CommentResponse(
+        //             post.Id,
+        //             post.PostId,
+        //             post.ContactInfo,
+        //             post.Description,
+        //             post.CreatedAt
+        //         ))
+        //         .SingleOrDefaultAsync(cancellationToken);
+
+
+        CommentResponse? comment = await commentRepository.GetByIdAsync(query.CommentId);
 
         if (comment is null)
         {

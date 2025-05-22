@@ -1,4 +1,4 @@
-﻿namespace Domain.Posts;
+﻿namespace Domain;
 
 public record PostsResponse
 {
@@ -11,4 +11,5 @@ public record PostsResponse
     public decimal? Amount { get; init; }
     public string Status { get; init; }
     public DateTime CreatedAt { get; init; }
+    public string CreatedTime {get; set; }
 }

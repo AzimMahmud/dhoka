@@ -11,6 +11,8 @@
         <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks"/>
         <PackageReference Include="Newtonsoft.Json"/>
         <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL"/>
+        <PackageReference Include="OpenSearch.Client" />
+        <PackageReference Include="OpenSearch.Net.Auth.AwsSigV4" />
         <PackageReference Include="Twilio"/>
 
     </ItemGroup>

@@ -1,7 +1,4 @@
-﻿using System.Text.Json.Serialization;
-using Amazon.DynamoDBv2.DataModel;
-using NpgsqlTypes;
-using SharedKernel;
+﻿using Amazon.DynamoDBv2.DataModel;
 
 namespace Domain.Posts;
 
@@ -22,7 +19,7 @@ public class Post
     public string? ContactNumber { get; set; }
     public int Otp { get; set; }
     public DateTime? OtpExpirationTime { get; set; }
-    public DateTime CreatedAt { get; set; }
+    public DateTime? CreatedAt { get; set; }
     public List<string>? ImageUrls { get; set; } = [];
 
     // Computed property, not stored in DynamoDB

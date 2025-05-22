@@ -1,6 +1,4 @@
-﻿using Application.Abstractions;
-
-namespace Application.Posts.AutoComplete;
+﻿namespace Application.Posts.AutoComplete;
 
 public class AutoCompleteResponse
 {

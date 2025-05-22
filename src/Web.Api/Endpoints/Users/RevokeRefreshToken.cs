@@ -1,6 +1,4 @@
-﻿using Application.Abstractions.Authentication;
-using Application.Abstractions.Data;
-using Application.Users.RevokeRefreshTokens;
+﻿using Application.Users.RevokeRefreshTokens;
 using MediatR;
 using SharedKernel;
 using Web.Api.Extensions;

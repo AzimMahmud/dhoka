@@ -1,5 +1,4 @@
-﻿using Application.Posts.Reject;
-using Application.Posts.UploadImages;
+﻿using Application.Posts.UploadImages;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using SharedKernel;

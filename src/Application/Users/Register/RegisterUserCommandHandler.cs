@@ -1,15 +1,12 @@
-﻿using Application.Abstractions;
-using Application.Abstractions.Authentication;
+﻿using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
-using Application.Users.VerifyEmail;
 using Domain.Roles;
 using Domain.Tokens;
 using Domain.Users;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Npgsql;
-using Quartz;
 using SharedKernel;
 
 

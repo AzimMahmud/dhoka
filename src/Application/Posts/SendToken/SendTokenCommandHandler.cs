@@ -1,8 +1,6 @@
 ﻿using Application.Abstractions;
-using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Domain.Posts;
-using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
 namespace Application.Posts.SendToken;
@@ -15,9 +13,6 @@ internal class SendTokenCommandHandler(
 {
     public async Task<Result<int>> Handle(SendTokenCommand command, CancellationToken cancellationToken)
     {
-        // Post? post = await context.Posts.AsNoTracking()
-        //     .FirstOrDefaultAsync(x => x.Id == command.PostId, cancellationToken: cancellationToken);
-
         Post? post =  await postRepository.GetByIdAsync(command.PostId);
         
         if (post is null)
@@ -37,8 +32,7 @@ internal class SendTokenCommandHandler(
                 post.OtpExpirationTime = dateTimeProvider.UtcNow.AddMinutes(10);
                 
                 await postRepository.UpdateAsync(post);
-                // context.Posts.Update(post);
-                // await context.SaveChangesAsync(cancellationToken);
+               
             }
             return Result.Success(otp);
         }

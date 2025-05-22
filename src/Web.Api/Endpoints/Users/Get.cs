@@ -4,7 +4,6 @@ using MediatR;
 using SharedKernel;
 using Web.Api.Extensions;
 using Web.Api.Infrastructure;
-using UserResponse = Application.Users.GetById.UserResponse;
 
 namespace Web.Api.Endpoints.Users;
 

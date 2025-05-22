@@ -1,13 +1,12 @@
-﻿using Application.Abstractions.Data;
-using Application.Abstractions.Messaging;
+﻿using Application.Abstractions.Messaging;
 using Domain.Posts;
-using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
 namespace Application.Posts.Verify;
 
 internal sealed class VerifyPostCommandHandler(
     IPostRepository postRepository,
+    IPostCounterRepository postCounterRepository,
     IDateTimeProvider dateTimeProvider)
     : ICommandHandler<VerifyPostCommand, Guid>
 {
@@ -15,10 +14,6 @@ internal sealed class VerifyPostCommandHandler(
     {
         Post? post =  await postRepository.GetByIdAsync(command.PostId);
         
-       
-        // Post? post = await context.Posts.FirstOrDefaultAsync(x =>
-        //     x.Id == command.PostId && x.Otp == command.Otp, cancellationToken: cancellationToken);
-
         if (post is null )
         {
             return Result.Failure<Guid>(new Error("400", "Invalid otp", ErrorType.Validation));
@@ -36,11 +31,9 @@ internal sealed class VerifyPostCommandHandler(
         post.PaymentType = command.PaymentType;
         post.Amount = command.Amount;
         post.Status = nameof(Status.Pending);
-
-
-        await postRepository.UpdateAsync(post);
         
-        // await context.SaveChangesAsync(cancellationToken);
+        await postRepository.UpdateAsync(post);
+        await postCounterRepository.IncrementAsync("Posts", 1);
 
         return post.Id;
     }

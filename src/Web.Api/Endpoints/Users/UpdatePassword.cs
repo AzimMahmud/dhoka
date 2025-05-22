@@ -1,7 +1,4 @@
-﻿using Application.Users.Register;
-using Application.Users.UpdatePassword;
-using Application.Users.UpdateUser;
-using Domain.Roles;
+﻿using Application.Users.UpdatePassword;
 using MediatR;
 using SharedKernel;
 using Web.Api.Extensions;

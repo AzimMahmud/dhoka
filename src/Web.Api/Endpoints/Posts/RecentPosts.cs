@@ -1,5 +1,5 @@
 ﻿using Application.Posts.RecentPosts;
-using Application.Posts.Search;
+using Domain;
 using MediatR;
 using SharedKernel;
 using Web.Api.Extensions;
@@ -15,7 +15,7 @@ internal sealed class RecentPosts : IEndpoint
             {
                 var query = new RecentPostsQuery();
 
-                Result<List<RecentPostDto>> result = await sender.Send(query, cancellationToken);
+                Result<List<PostsResponse>> result = await sender.Send(query, cancellationToken);
 
                 return result.Match(Results.Ok, CustomResults.Problem);
             })

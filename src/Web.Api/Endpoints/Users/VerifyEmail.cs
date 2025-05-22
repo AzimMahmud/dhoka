@@ -1,11 +1,6 @@
-﻿using Application.Posts.Verify;
-using Application.Users.Register;
-using Application.Users.VerifyEmail;
+﻿using Application.Users.VerifyEmail;
 using MediatR;
-using Microsoft.AspNetCore.Mvc;
 using SharedKernel;
-using Web.Api.Extensions;
-using Web.Api.Infrastructure;
 
 namespace Web.Api.Endpoints.Users;
 

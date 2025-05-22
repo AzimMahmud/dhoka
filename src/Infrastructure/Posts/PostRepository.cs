@@ -1,50 +1,188 @@
-﻿using System.Net;
+﻿using System.Text;
 using System.Text.Json;
 using Amazon.DynamoDBv2;
-using Amazon.DynamoDBv2.DataModel;
-using Amazon.DynamoDBv2.DocumentModel;
 using Amazon.DynamoDBv2.Model;
 using Domain;
 using Domain.Posts;
+using OpenSearch.Client;
 
 namespace Infrastructure.Posts;
 
 public class PostRepository : IPostRepository
 {
     private readonly IAmazonDynamoDB _dynamoDB;
-    private readonly string TableName = "Posts";
+    private readonly IOpenSearchClient _openSearchClient;
 
-    public PostRepository(IAmazonDynamoDB dynamoDB)
+    private readonly string TableName = "Posts";
+    private readonly string IndexName = "dhoka-data-index"; // OpenSearch index name
+
+    public PostRepository(IAmazonDynamoDB dynamoDB, IOpenSearchClient openSearchClient)
     {
         _dynamoDB = dynamoDB;
+        _openSearchClient = openSearchClient;
     }
 
-    public async Task<Post?> GetByIdAsync(Guid id)
+    public async Task<Post> GetByIdAsync(Guid id)
     {
         var request = new GetItemRequest
         {
             TableName = TableName,
             Key = new Dictionary<string, AttributeValue>
             {
-                ["Id"] = new AttributeValue { S = id.ToString() }
+                ["Id"] = new AttributeValue { S = id.ToString() } // Adjust based on schema
             }
         };
 
-        GetItemResponse? response = await _dynamoDB.GetItemAsync(request);
-        if (response.Item == null || response.Item.Count == 0)
+        try
         {
-            return null;
+            GetItemResponse response = await _dynamoDB.GetItemAsync(request);
+            if (response.Item == null || response.Item.Count == 0)
+            {
+                return null;
+            }
+
+            return MapFromDynamoDb(response.Item);
+        }
+        catch (AmazonDynamoDBException ex)
+        {
+            throw new InvalidOperationException($"Failed to retrieve post with ID {id}: {ex.Message}", ex);
+        }
+    }
+
+    public async Task<PagedResult<PostsResponse>> GetAllAsync(
+        int pageSize,
+        string? paginationToken,
+        string? statusFilter = null)
+    {
+        // 1) Decode pagination token
+        Dictionary<string, AttributeValue>? exclusiveStartKey = null;
+        if (!string.IsNullOrWhiteSpace(paginationToken))
+        {
+            try
+            {
+                byte[] decoded = Convert.FromBase64String(paginationToken);
+                string json = Encoding.UTF8.GetString(decoded);
+                exclusiveStartKey = JsonSerializer.Deserialize<Dictionary<string, AttributeValue>>(
+                    json,
+                    new JsonSerializerOptions { Converters = { new AttributeValueConverter() } }
+                );
+            }
+            catch
+            {
+                exclusiveStartKey = null;
+            }
         }
 
-        return MapFromDynamoDb(response.Item);
+        // If a statusFilter is provided, do a Query on the GSI
+        if (!string.IsNullOrWhiteSpace(statusFilter))
+        {
+            var qr = new QueryRequest
+            {
+                TableName = "Posts",
+                IndexName = "CreatedAtIndex", // your GSI
+                KeyConditionExpression = "#st = :statusVal",
+                ExpressionAttributeNames = new Dictionary<string, string> { { "#st", "Status" } },
+                ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                {
+                    { ":statusVal", new AttributeValue { S = statusFilter } }
+                },
+                ScanIndexForward = false, // newest first
+                Limit = pageSize,
+                ExclusiveStartKey = exclusiveStartKey
+            };
+
+            QueryResponse? resp = await _dynamoDB.QueryAsync(qr);
+
+            var items = resp.Items.Select(MapToPostResponse).ToList();
+
+            bool hasMore = resp.LastEvaluatedKey?.Count > 0;
+            string? nextToken = null;
+            if (hasMore)
+            {
+                string tokJson = JsonSerializer.Serialize(resp.LastEvaluatedKey, new JsonSerializerOptions
+                {
+                    Converters = { new AttributeValueConverter() }
+                });
+                nextToken = Convert.ToBase64String(Encoding.UTF8.GetBytes(tokJson));
+            }
+
+            return new PagedResult<PostsResponse>
+            {
+                Items = items,
+                NextPageToken = nextToken,
+                HasMore = hasMore
+            };
+        }
+
+        // Otherwise, do an unfiltered Scan
+        var scanReq = new ScanRequest
+        {
+            TableName = "Posts",
+            Limit = pageSize,
+            ExclusiveStartKey = exclusiveStartKey
+        };
+        ScanResponse? scanResp = await _dynamoDB.ScanAsync(scanReq);
+
+        var scanItems = scanResp.Items.Select(MapToPostResponse).ToList();
+
+        bool scanHasMore = scanResp.LastEvaluatedKey?.Count > 0;
+        string? scanNext = null;
+        if (scanHasMore)
+        {
+            string tokJson = JsonSerializer.Serialize(scanResp.LastEvaluatedKey, new JsonSerializerOptions
+            {
+                Converters = { new AttributeValueConverter() }
+            });
+            scanNext = Convert.ToBase64String(Encoding.UTF8.GetBytes(tokJson));
+        }
+
+        return new PagedResult<PostsResponse>
+        {
+            Items = scanItems,
+            NextPageToken = scanNext,
+            HasMore = scanHasMore
+        };
     }
 
-    public async Task<IEnumerable<Post>> GetAllAsync()
+    public async Task<List<PostsResponse>> GetRecentPostsAsync()
     {
-        ScanResponse? response = await _dynamoDB.ScanAsync(new ScanRequest { TableName = TableName });
+        var request = new QueryRequest
+        {
+            TableName = "Posts",
+            IndexName = "CreatedAtIndex", // Ensure this GSI exists and is configured properly
+            KeyConditionExpression = "#st = :statusVal",
+            ExpressionAttributeNames = new Dictionary<string, string>
+            {
+                { "#st", "Status" } // Alias for reserved keyword
+            },
+            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+            {
+                { ":statusVal", new AttributeValue { S = nameof(Status.Approved) } }
+            },
+            ScanIndexForward = false, // DESC order for recent posts
+            Limit = 5
+        };
 
-        return response.Items.Select(MapFromDynamoDb);
+        QueryResponse? response = await _dynamoDB.QueryAsync(request);
+
+        var items = response.Items.Select(item => new PostsResponse
+        {
+            Id = Guid.Parse(item["Id"].S),
+            Title = item.GetValueOrDefault("Title")?.S,
+            TransactionMode = item.GetValueOrDefault("TransactionMode")?.S,
+            PaymentType = item.GetValueOrDefault("PaymentType")?.S,
+            Description = item.GetValueOrDefault("Description")?.S,
+            MobilNumbers = item.TryGetValue("MobilNumbers", out AttributeValue? mn)
+                ? mn.L.Select(x => x.S).ToList()
+                : [],
+            Amount = item.TryGetValue("Amount", out AttributeValue? amt) ? decimal.Parse(amt.N) : (decimal?)null,
+            Status = item.GetValueOrDefault("Status")?.S ?? string.Empty,
+            CreatedAt = item.TryGetValue("CreatedAt", out AttributeValue? ca) ? DateTime.Parse(ca.S) : DateTime.MinValue
+        }).ToList();
+
+        return items;
     }
+
 
     public async Task CreateAsync(Post post)
     {
@@ -67,6 +205,21 @@ public class PostRepository : IPostRepository
         };
 
         await _dynamoDB.PutItemAsync(request);
+
+
+        if (post.IsApproved)
+        {
+            IndexResponse? response = await _openSearchClient.IndexAsync(post, i => i
+                    .Index("dhoka-data-index")
+                    .Id(post.Id) // optional, uses product.Id as document ID
+            );
+
+            if (!response.IsValid)
+            {
+                // handle error
+                throw new Exception($"OpenSearch indexing failed: {response.OriginalException.Message}");
+            }
+        }
     }
 
     public async Task DeleteAsync(Guid id)
@@ -83,97 +236,118 @@ public class PostRepository : IPostRepository
         await _dynamoDB.DeleteItemAsync(request);
     }
 
-    public async Task<PagedResult<PostsResponse>> SearchAsync(PostSearchRequest request)
+    public async Task<PagedSearchResult<PostsResponse>> SearchAsync(PostSearchRequest request)
     {
-        var scanRequest = new ScanRequest
+        int currentPage = request.CurrentPage < 1 ? 1 : request.CurrentPage;
+        int pageSize = request.PageSize < 1 ? 10 : request.PageSize;
+        int from = (currentPage - 1) * pageSize;
+
+        SearchDescriptor<Post>? searchDescriptor = new SearchDescriptor<Post>()
+            .From(from)
+            .Size(pageSize)
+            .Scroll("1m")
+            .Query(q =>
+            {
+                var mustQueryContainer = new List<QueryContainer>();
+                var filterQueryContainer = new List<QueryContainer>();
+
+
+                if (!string.IsNullOrWhiteSpace(request.SearchTerm))
+                {
+                    mustQueryContainer.Add(q.MultiMatch(m => m
+                            .Fields(f => f
+                                .Field(p => p.Title)
+                                .Field(p => p.Description)
+                                .Field(p => p.MobilNumbers)
+                            )
+                            .Query(request.SearchTerm)
+                            .Type(TextQueryType.MostFields) // Tries to match the best field
+                            .Fuzziness(Fuzziness.Auto) // Enables fuzzy matching
+                            .Operator(Operator.Or) // All terms must match (use OR if you prefer leniency)
+                            .MinimumShouldMatch("75%") // Optional: only 75% of terms need to match
+                    ));
+                }
+
+                filterQueryContainer.Add(q.Match(m => m
+                    .Field(p => p.Status)
+                    .Query(nameof(Status.Approved))));
+
+                return q.Bool(b => b
+                        .Must(mustQueryContainer.ToArray()) // Scoring conditions
+                        .Filter(filterQueryContainer.ToArray()) // Non-scoring conditions
+                );
+            });
+
+
+        ISearchResponse<PostsResponse>? response = await _openSearchClient.SearchAsync<PostsResponse>(searchDescriptor);
+
+        long totalCount = response.Total;
+        return new PagedSearchResult<PostsResponse>
         {
-            TableName = "Posts",
-            Limit = request.PageSize,
-            ExpressionAttributeValues = new Dictionary<string, AttributeValue>(),
-            ExpressionAttributeNames = new Dictionary<string, string>()
+            Items = response.Documents,
+            CurrentPage = currentPage,
+            PageSize = pageSize,
+            TotalCount = totalCount
+        };
+    }
+
+    public async Task<List<string?>> AutocompleteTitlesAsync(AutocompleteRequest request)
+    {
+        // Use MatchPhrasePrefixQuery for case-insensitive prefix matching
+        var boolQuery = new BoolQuery
+        {
+            Must = new QueryContainer[]
+            {
+                new MatchPhrasePrefixQuery
+                {
+                    Field = "title", // Use analyzed 'title' field instead of 'title.keyword'
+                    Query = request.Prefix, // No need to force ToLower() here
+                    MaxExpansions = 50 // Limit expansions for performance
+                }
+            },
+            Filter = new QueryContainer[]
+            {
+                new TermQuery
+                {
+                    Field = "status.keyword",
+                    Value = nameof(Status.Approved)
+                }
+            }
         };
 
-        var filterExpressions = new List<string>();
-
-        if (!string.IsNullOrEmpty(request.SearchTerm))
+        var searchRequest = new SearchRequest(IndexName)
         {
-            string search = request.SearchTerm;
-
-            string[] fields = new[]
-                { "Title", "Description", "TransactionMode", "PaymentType", "ContactNumber", "Status" };
-
-            int i = 0;
-            foreach (string field in fields)
+            Size = 10, // Increased cap to 10 for more flexibility
+            Query = boolQuery,
+            Source = new SourceFilter
             {
-                string valueKey = $":val{i}";
-                string nameKey = $"#{field}";
+                Includes = new[] { "title" }
+            }
+        };
 
-                scanRequest.ExpressionAttributeValues[valueKey] = new AttributeValue { S = search };
-                scanRequest.ExpressionAttributeNames[nameKey] = field;
+        try
+        {
+            ISearchResponse<dynamic>? response = await _openSearchClient.SearchAsync<dynamic>(searchRequest);
 
-                filterExpressions.Add($"contains({nameKey}, {valueKey})");
-                i++;
+            if (!response.IsValid)
+            {
+                throw new InvalidOperationException(
+                    $"OpenSearch autocomplete query failed: {response.ServerError?.Error.Reason ?? "Unknown error"}"
+                );
             }
 
-            scanRequest.FilterExpression = string.Join(" OR ", filterExpressions);
+            return response.Hits
+                .Select(hit => (string?)hit.Source.title)
+                .Where(t => !string.IsNullOrEmpty(t))
+                .Distinct()
+                .ToList();
         }
-
-        if (!string.IsNullOrEmpty(request.LastEvaluatedKey))
+        catch (Exception ex)
         {
-            scanRequest.ExclusiveStartKey =
-                JsonSerializer.Deserialize<Dictionary<string, AttributeValue>>(request.LastEvaluatedKey);
+            throw; // Re-throw to allow caller to handle
         }
-
-
-        ScanResponse? response = await _dynamoDB.ScanAsync(scanRequest);
-
-        var posts = response.Items.Select(item => new PostsResponse
-        {
-            Id = Guid.Parse(item["Id"].S),
-            Title = item.TryGetValue("Title", out AttributeValue? title) ? title.S : null,
-            TransactionMode = item.TryGetValue("TransactionMode", out AttributeValue? tm) ? tm.S : null,
-            PaymentType = item.TryGetValue("PaymentType", out AttributeValue? pt) ? pt.S : null,
-            Description = item.TryGetValue("Description", out AttributeValue? desc) ? desc.S : null,
-            MobilNumbers = item.TryGetValue("MobilNumbers", out AttributeValue? mn) ? mn.SS : new List<string>(),
-            Amount = item.TryGetValue("Amount", out AttributeValue? amt) ? decimal.Parse(amt.N) : null,
-            Status = item["Status"].S,
-        }).ToList();
-
-        return new PagedResult<PostsResponse>
-        {
-            Items = posts,
-            PaginationToken = response.LastEvaluatedKey?.Count > 0
-                ? JsonSerializer.Serialize(response.LastEvaluatedKey)
-                : null
-        };
     }
 
-    public async Task<List<string>> AutocompleteTitlesAsync(AutocompleteRequest request)
-    {
-        var scanRequest = new ScanRequest
-        {
-            TableName = "Posts",
-            Limit = request.MaxResults, // You can fetch more and filter if needed
-            FilterExpression = "begins_with(#title, :prefix)",
-            ExpressionAttributeNames = new Dictionary<string, string>
-            {
-                { "#title", "Title" }
-            },
-            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
-            {
-                { ":prefix", new AttributeValue { S = request.Prefix } }
-            },
-            ProjectionExpression = "#title"
-        };
-
-        ScanResponse? response = await _dynamoDB.ScanAsync(scanRequest);
-
-        return response.Items
-            .Select(i => i["Title"].S)
-            .Distinct()
-            .Take(request.MaxResults)
-            .ToList();
-    }
 
     // Helper: map from DynamoDB attributes to Product
     private static Post MapFromDynamoDb(Dictionary<string, AttributeValue> item)
@@ -219,7 +393,8 @@ public class PostRepository : IPostRepository
             ["OtpExpirationTime"] = post.OtpExpirationTime.HasValue
                 ? new AttributeValue { S = post.OtpExpirationTime.Value.ToString("o") }
                 : null,
-            ["CreatedAt"] = new AttributeValue { S = post.CreatedAt.ToString("o") },
+            ["CreatedAt"] = new AttributeValue
+                { S = post.CreatedAt.HasValue ? post.CreatedAt.Value.ToString("o") : string.Empty },
         };
 
         if (post.MobilNumbers is not null && post.MobilNumbers.Count > 0)
@@ -236,5 +411,52 @@ public class PostRepository : IPostRepository
         return item
             .Where(kvp => kvp.Value != null)
             .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+    }
+
+
+    private PostsResponse MapToPostResponse(Dictionary<string, AttributeValue> item)
+    {
+        return new PostsResponse
+        {
+            Id = Guid.Parse(item["Id"].S),
+            Title = item.GetValueOrDefault("Title")?.S,
+            TransactionMode = item.GetValueOrDefault("TransactionMode")?.S,
+            PaymentType = item.GetValueOrDefault("PaymentType")?.S,
+            Description = item.GetValueOrDefault("Description")?.S,
+            MobilNumbers = item.TryGetValue("MobilNumbers", out AttributeValue? mn)
+                ? mn.L.Select(x => x.S).ToList()
+                : new List<string>(),
+            Amount = item.TryGetValue("Amount", out AttributeValue? amt)
+                ? decimal.Parse(amt.N)
+                : (decimal?)null,
+            Status = item.GetValueOrDefault("Status")?.S ?? string.Empty,
+            CreatedAt = item.TryGetValue("CreatedAt", out AttributeValue? ca)
+                ? DateTime.Parse(ca.S)
+                : DateTime.MinValue,
+        };
+    }
+
+    private Dictionary<string, AttributeValue>? DecodePaginationToken(string? paginationToken)
+    {
+        if (string.IsNullOrWhiteSpace(paginationToken))
+        {
+            return null;
+        }
+
+        string json = Encoding.UTF8.GetString(Convert.FromBase64String(paginationToken));
+        return JsonSerializer.Deserialize<Dictionary<string, AttributeValue>>(json, new JsonSerializerOptions
+        {
+            Converters = { new AttributeValueConverter() }
+        });
+    }
+
+
+    private string EncodePaginationToken(Dictionary<string, AttributeValue> lastEvaluatedKey)
+    {
+        string json = JsonSerializer.Serialize(lastEvaluatedKey, new JsonSerializerOptions
+        {
+            Converters = { new AttributeValueConverter() }
+        });
+        return Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
     }
 }

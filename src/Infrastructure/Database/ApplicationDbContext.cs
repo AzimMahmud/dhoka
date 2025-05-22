@@ -1,14 +1,10 @@
 ﻿using Application.Abstractions.Data;
-using Domain.Comments;
-using Domain.Posts;
 using Domain.Roles;
-using Domain.SearchEvents;
 using Domain.Tokens;
 using Domain.Users;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
-
 
 namespace Infrastructure.Database;
 
@@ -17,17 +13,12 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
 {
     public DbSet<User> Users { get; set; }
     
-    public DbSet<Post> Posts { get; set; }
-    
-    public DbSet<Comment> Comments { get; set; }
-    
-    public DbSet<SearchEvent> SearchEvents { get; set; }
-    
     public DbSet<Role> Roles { get; }
     
     public DbSet<UserRole> UserRoles { get; set; }
     
     public DbSet<RefreshToken> RefreshTokens { get; set; }
+    
     public DbSet<EmailVerificationToken> EmailVerificationTokens { get; set; }
 
 
@@ -40,16 +31,6 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
-        // When should you publish domain events?
-        //
-        // 1. BEFORE calling SaveChangesAsync
-        //     - domain events are part of the same transaction
-        //     - immediate consistency
-        // 2. AFTER calling SaveChangesAsync
-        //     - domain events are a separate transaction
-        //     - eventual consistency
-        //     - handlers can fail
-
         int result = await base.SaveChangesAsync(cancellationToken);
 
         await PublishDomainEventsAsync();

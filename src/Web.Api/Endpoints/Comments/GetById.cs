@@ -1,4 +1,5 @@
 ﻿using Application.Comments.GetById;
+using Domain.Comments;
 using MediatR;
 using SharedKernel;
 using Web.Api.Extensions;

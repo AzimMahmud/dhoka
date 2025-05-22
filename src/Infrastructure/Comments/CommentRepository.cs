@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+﻿using System.Text;
+using System.Text.Json;
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 using Domain;
@@ -8,7 +9,7 @@ namespace Infrastructure.Comments;
 
 public class CommentRepository(IAmazonDynamoDB dynamoDb) : ICommentRepository
 {
-    private const string TableName = "Comments"; 
+    private const string TableName = "Comments";
 
     public async Task CreateAsync(Comment comment)
     {
@@ -30,7 +31,7 @@ public class CommentRepository(IAmazonDynamoDB dynamoDb) : ICommentRepository
         await dynamoDb.PutItemAsync(request);
     }
 
-    public async Task<CommentsResponse?> GetByIdAsync(Guid id)
+    public async Task<CommentResponse?> GetByIdAsync(Guid id)
     {
         var request = new GetItemRequest
         {
@@ -49,13 +50,13 @@ public class CommentRepository(IAmazonDynamoDB dynamoDb) : ICommentRepository
         }
 
         Dictionary<string, AttributeValue>? item = response.Item;
-        return new CommentsResponse
+        return new CommentResponse
         {
             Id = Guid.Parse(item["Id"].S),
             PostId = Guid.Parse(item["PostId"].S),
             ContactInfo = item["ContactInfo"].S,
             Description = item["Description"].S,
-            Created = DateTime.Parse(item["CreatedAt"].S)
+            CreatedAt = DateTime.Parse(item["CreatedAt"].S)
         };
     }
 
@@ -100,46 +101,65 @@ public class CommentRepository(IAmazonDynamoDB dynamoDb) : ICommentRepository
         await dynamoDb.DeleteItemAsync(request);
     }
 
-    public async Task<PagedResult<CommentsResponse>> GetByPostIdPaginatedAsync(Guid postId, int pageSize, string? lastEvaluatedKey)
+    public async Task<PagedResult<CommentsResponse>> GetByPostIdPaginatedAsync(
+        Guid postId,
+        int pageSize,
+        string? paginationToken)
     {
+        // Decode the pagination token to ExclusiveStartKey
+        Dictionary<string, AttributeValue>? exclusiveStartKey = DecodePaginationToken(paginationToken);
+
         var request = new QueryRequest
         {
             TableName = "Comments",
-            IndexName = "PostId-index", // GSI required
+            IndexName = "PostId-index", // Ensure this GSI exists
             KeyConditionExpression = "PostId = :postId",
             ExpressionAttributeValues = new Dictionary<string, AttributeValue>
             {
-                [":postId"] = new AttributeValue { S = postId.ToString() }
+                { ":postId", new AttributeValue { S = postId.ToString() } }
             },
-            Limit = pageSize
+            Limit = pageSize,
+            ExclusiveStartKey = exclusiveStartKey
         };
-
-        // Decode the last key if provided
-        if (!string.IsNullOrEmpty(lastEvaluatedKey))
-        {
-            request.ExclusiveStartKey = JsonSerializer.Deserialize<Dictionary<string, AttributeValue>>(lastEvaluatedKey);
-        }
 
         QueryResponse? response = await dynamoDb.QueryAsync(request);
 
-        var comments = response.Items.Select(item => new CommentsResponse
+        var items = response.Items.Select(item => new CommentsResponse
         {
-            Id = Guid.Parse(item["Id"].S),
-            PostId = Guid.Parse(item["PostId"].S),
-            ContactInfo = item["ContactInfo"].S,
-            Description = item["Description"].S,
-            Created = DateTime.Parse(item["CreatedAt"].S)
+            Id = Guid.TryParse(item.GetValueOrDefault("Id")?.S, out Guid id) ? id : Guid.Empty,
+            PostId = Guid.TryParse(item.GetValueOrDefault("PostId")?.S, out Guid post) ? post : Guid.Empty,
+            ContactInfo = item.TryGetValue("ContactInfo", out AttributeValue? contact) ? contact.S : null,
+            Description = item.TryGetValue("Description", out AttributeValue? desc) ? desc.S : null,
+            Created = item.TryGetValue("CreatedAt", out AttributeValue? createdAt) &&
+                      DateTime.TryParse(createdAt.S, out DateTime dt)
+                ? dt
+                : DateTime.MinValue
         }).ToList();
-
-        // Encode LastEvaluatedKey for frontend or next call
-        string? nextCursor = response.LastEvaluatedKey?.Count > 0
-            ? JsonSerializer.Serialize(response.LastEvaluatedKey)
-            : null;
 
         return new PagedResult<CommentsResponse>
         {
-            Items = comments,
-            PaginationToken = nextCursor
+            Items = items,
+            NextPageToken = response.LastEvaluatedKey != null && response.LastEvaluatedKey.Count > 0
+                ? EncodePaginationToken(response.LastEvaluatedKey)
+                : null
         };
+    }
+
+
+    private Dictionary<string, AttributeValue>? DecodePaginationToken(string? token)
+    {
+        if (string.IsNullOrEmpty(token))
+        {
+            return null;
+        }
+
+        string json = Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        return JsonSerializer.Deserialize<Dictionary<string, AttributeValue>>(json);
+    }
+
+    private string EncodePaginationToken(Dictionary<string, AttributeValue> token)
+    {
+        string json = JsonSerializer.Serialize(token);
+        return Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
     }
 }

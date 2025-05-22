@@ -1,12 +1,11 @@
-﻿using Application.Abstractions.Data;
-using Application.Abstractions.Messaging;
+﻿using Application.Abstractions.Messaging;
 using Domain.Comments;
 using SharedKernel;
 
 namespace Application.Comments.Create;
 
 internal sealed class CreateCommentCommandHandler(
-    IApplicationDbContext context,
+    ICommentRepository commentRepository,
     IDateTimeProvider dateTimeProvider)
     : ICommandHandler<CreateCommentCommand, Guid>
 {
@@ -19,11 +18,13 @@ internal sealed class CreateCommentCommandHandler(
             Description = command.Description,
             CreatedAt = dateTimeProvider.UtcNow
         };
-        
-        context.Comments.Add(comment);
+        //
+        // context.Comments.Add(comment);
+        //
+        // await context.SaveChangesAsync(cancellationToken);
 
-        await context.SaveChangesAsync(cancellationToken);
 
+        await commentRepository.CreateAsync(comment);
         return comment.Id;
     }
 }

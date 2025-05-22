@@ -3,7 +3,7 @@
 public interface ICommentRepository
 {
     Task CreateAsync(Comment comment);
-    Task<CommentsResponse?> GetByIdAsync(Guid id);
+    Task<CommentResponse?> GetByIdAsync(Guid id);
     Task<List<CommentsResponse>> GetByPostIdAsync(Guid postId);
     Task DeleteAsync(Guid id);
 

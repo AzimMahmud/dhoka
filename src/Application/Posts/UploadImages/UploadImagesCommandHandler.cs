@@ -1,7 +1,5 @@
-﻿using Application.Abstractions.Data;
-using Application.Abstractions.Messaging;
+﻿using Application.Abstractions.Messaging;
 using Domain.Posts;
-using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
 namespace Application.Posts.UploadImages;
@@ -11,9 +9,6 @@ internal sealed class UploadImagesCommandHandler(IPostRepository postRepository,
 {
     public async Task<Result> Handle(UploadImagesCommand command, CancellationToken cancellationToken)
     {
-        // Post? post = await context.Posts.AsNoTracking()
-        //     .FirstOrDefaultAsync(x => x.Id == command.PostId, cancellationToken: cancellationToken);
-
         Post? post =  await postRepository.GetByIdAsync(command.PostId);
         
         if (post is null)
@@ -29,10 +24,6 @@ internal sealed class UploadImagesCommandHandler(IPostRepository postRepository,
         
             await postRepository.UpdateAsync(post);
         }
-        
-        // context.Posts.Update(post);
-        //
-        // await context.SaveChangesAsync(cancellationToken);
 
         return Result.Success("Image uploaded");
     }

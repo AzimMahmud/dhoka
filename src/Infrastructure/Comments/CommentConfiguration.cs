@@ -1,9 +1,4 @@
-﻿using Domain.Comments;
-using Domain.Posts;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Metadata.Builders;
-
-namespace Infrastructure.Comments;
+﻿namespace Infrastructure.Comments;
 
 // internal sealed class CommentConfiguration : IEntityTypeConfiguration<Comment>
 // {

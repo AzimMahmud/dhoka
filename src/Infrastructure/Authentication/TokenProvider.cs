@@ -4,7 +4,6 @@ using System.Text;
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Domain.Users;
-using Infrastructure.Database;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.JsonWebTokens;

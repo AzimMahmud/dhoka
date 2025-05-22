@@ -1,12 +1,9 @@
-﻿using System.Net;
-using System.Net.Mail;
-using Mailjet.Client;
+﻿using Mailjet.Client;
 using Mailjet.Client.Resources;
 using Mailjet.Client.TransactionalEmails;
 using Mailjet.Client.TransactionalEmails.Response;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json.Linq;
 using SharedKernel;
 
 namespace Infrastructure.MessageServices;

@@ -1,20 +1,15 @@
-using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Domain.Posts;
-using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
 namespace Application.Posts.Settled;
 
 internal sealed class SettledPostCommandHandler(
-    IPostRepository postRepository)
+    IPostRepository postRepository, IPostCounterRepository postCounterRepository)
     : ICommandHandler<SettledPostCommand>
 {
     public async Task<Result> Handle(SettledPostCommand command, CancellationToken cancellationToken)
     {
-        // Post? post = await context.Posts
-        //     .SingleOrDefaultAsync(t => t.Id == command.PostId, cancellationToken);
-
         Post? post =  await postRepository.GetByIdAsync(command.PostId);
         
         if (post is null)
@@ -31,7 +26,7 @@ internal sealed class SettledPostCommandHandler(
         
         await postRepository.UpdateAsync(post);
         
-        // await context.SaveChangesAsync(cancellationToken);
+        await postCounterRepository.IncrementAsync(nameof(Status.Settled), 1);
 
         return Result.Success();
     }

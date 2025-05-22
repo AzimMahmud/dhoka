@@ -1,5 +1,4 @@
-﻿using Application.Comments.Get;
-using Application.Posts.Comment;
+﻿using Application.Posts.Comment;
 using Domain.Comments;
 using MediatR;
 using SharedKernel;

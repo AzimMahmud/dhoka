@@ -1,7 +1,4 @@
-﻿using System.Linq.Expressions;
-using Application.Abstractions.Data;
-using Application.Abstractions.Messaging;
-using Application.Posts.Get;
+﻿using Application.Abstractions.Messaging;
 using Domain;
 using Domain.Comments;
 using SharedKernel;
@@ -15,8 +12,7 @@ internal sealed class GetCommentsQueryHandler(ICommentRepository commentReposito
         CancellationToken cancellationToken)
     {
         PagedResult<CommentsResponse> comments =
-            await commentRepository.GetByPostIdPaginatedAsync(request.PostId, request.PageSize,
-                request.PaginationToken);
+            await commentRepository.GetByPostIdPaginatedAsync(request.PostId, request.PageSize, request.PaginationToken);
 
 
         //     IQueryable<Comment> commentsQuery = context.Comments;
@@ -53,7 +49,7 @@ internal sealed class GetCommentsQueryHandler(ICommentRepository commentReposito
         //
         //     return posts;
 
-        return new Result<PagedResult<CommentsResponse>>(comments , true, null);
+        return comments;
     }
 
     //

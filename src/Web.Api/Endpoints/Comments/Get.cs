@@ -1,6 +1,4 @@
 ﻿using Application.Comments.Get;
-using Application.Posts.Get;
-using Application.Posts.GetById;
 using Domain;
 using Domain.Comments;
 using MediatR;
@@ -15,12 +13,9 @@ internal sealed class Get : IEndpoint
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
         app.MapGet("comments", async (Guid postId,
-                string? sortColumn,
-                string? sortOrder,
-                int page,
                 int pageSize, string paginationToken, ISender sender, CancellationToken cancellationToken) =>
         {
-            var command = new GetCommentsQuery(postId, sortColumn, sortOrder, page, pageSize, paginationToken);
+            var command = new GetCommentsQuery(postId,  pageSize, paginationToken);
 
             Result<PagedResult<CommentsResponse>> result = await sender.Send(command, cancellationToken);
 

@@ -1,81 +1,19 @@
-﻿using Application.Abstractions.Data;
-using Application.Abstractions.Messaging;
+﻿using Application.Abstractions.Messaging;
 using Domain;
 using Domain.Posts;
-using Domain.SearchEvents;
-using Microsoft.EntityFrameworkCore;
 using SharedKernel;
-
-// for NpgsqlTsVector
-
 
 namespace Application.Posts.Search;
 
-internal sealed class SearchPostsQueryHandler(IPostRepository postRepository, IDateTimeProvider dateTimeProvider)
-    : IQueryHandler<SearchPostsQuery, PagedResult<PostsResponse>>
+internal sealed class SearchPostsQueryHandler(IPostRepository postRepository, IPostCounterRepository postCounterRepository)
+    : IQueryHandler<SearchPostsQuery, PagedSearchResult<PostsResponse>>
 {
-    public async Task<Result<PagedResult<PostsResponse>>> Handle(SearchPostsQuery request,
+    public async Task<Result<PagedSearchResult<PostsResponse>>> Handle(SearchPostsQuery request,
         CancellationToken cancellationToken)
     {
+        PagedSearchResult<PostsResponse> posts = await postRepository.SearchAsync(request.SearchRequest);
         
-        PagedResult<PostsResponse> posts = await postRepository.SearchAsync(request.SearchRequest);
-        
-        // int pageNumber = request.Page;
-        // int pageSize = request.PageSize;
-        // string searchTerm = request.SearchTerm;
-        //
-        // if ( string.IsNullOrEmpty(searchTerm))
-        // {
-        //     return new Result<SearchPagedList>(new SearchPagedList(), true, Error.None);
-        // }
-        //
-        // var searchEvent = new SearchEvent
-        // {
-        //     Query = request.SearchTerm,
-        //     Timestamp = dateTimeProvider.UtcNow
-        // };
-        //
-        // await context.SearchEvents.AddAsync(searchEvent, cancellationToken);
-        //
-        // await context.SaveChangesAsync(cancellationToken);
-        //
-        // int totalCount = await context.Posts
-        //     .FromSqlInterpolated($@"
-        //         SELECT Id
-        //         FROM posts
-        //         WHERE search_vector @@plainto_tsquery('simple', {searchTerm})")
-        //     .CountAsync(cancellationToken: cancellationToken);
-        //
-        //
-        // List<SearchPostsResponse> postsQuery = await context.Posts
-        //     .FromSqlInterpolated($@"
-        //         SELECT id, title, transaction_mode, payment_type, description, mobil_numbers, amount, created_at
-        //         FROM posts
-        //         WHERE search_vector @@plainto_tsquery('simple', {searchTerm})
-        //         ORDER BY ts_rank(search_vector, plainto_tsquery('simple', {searchTerm})) DESC
-        //         LIMIT {pageSize} OFFSET {(pageNumber - 1) * pageSize}")
-        //     .Select(p => new SearchPostsResponse
-        //         {
-        //             Id = p.Id,
-        //             Title = p.Title,
-        //             TransactionMode = p.TransactionMode,
-        //             PaymentType = p.PaymentType,
-        //             Description = p.Description,
-        //             MobilNumbers = p.MobilNumbers,
-        //             Amount = p.Amount,
-        //             CreatedAt = p.CreatedAt,
-        //             Created = dateTimeProvider.ToRelativeTime(p.CreatedAt)
-        //         }
-        //     )
-        //     .AsNoTracking()
-        //     .ToListAsync(cancellationToken: cancellationToken);
-        //
-        // var posts = SearchPagedList.CreateAsync(
-        //     postsQuery,
-        //     request.Page,
-        //     request.PageSize,
-        //     totalCount);
-
+        await postCounterRepository.IncrementAsync("Search", 1);
 
         return posts;
     }

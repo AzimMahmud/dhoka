@@ -1,7 +1,7 @@
 ﻿
 
 using Application.Abstractions.Messaging;
-using Domain.Posts;
+using Domain;
 
 namespace Application.Posts.AutoComplete;
 

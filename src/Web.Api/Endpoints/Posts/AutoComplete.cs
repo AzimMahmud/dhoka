@@ -1,5 +1,5 @@
 ﻿using Application.Posts.AutoComplete;
-using Domain.Posts;
+using Domain;
 using MediatR;
 using SharedKernel;
 using Web.Api.Extensions;
