@@ -1,4 +1,5 @@
 ﻿using Application.Users.UpdateUser;
+using Domain.Roles;
 using MediatR;
 using SharedKernel;
 using Web.Api.Extensions;
@@ -8,7 +9,7 @@ namespace Web.Api.Endpoints.Users;
 
 public class UpdateUser : IEndpoint
 {
-    public sealed record Request(Guid Id, string FirstName, string LastName, string Email);
+    public sealed record Request(Guid Id, string FirstName, string LastName, string Email, string Role, string Status);
 
 public void MapEndpoint(IEndpointRouteBuilder app)
 {
@@ -23,13 +24,15 @@ public void MapEndpoint(IEndpointRouteBuilder app)
                 id,
                 request.FirstName,
                 request.LastName,
-                request.Email);
+                request.Email,
+                request.Role,
+                request.Status);
 
             Result<Guid> result = await sender.Send(command, cancellationToken);
 
             return result.Match(Results.Ok, CustomResults.Problem);
         })
-        .RequireAuthorization()
+        .RequireAuthorization(policy => policy.RequireRole(Role.Admin, Role.Member))
         .WithTags(Tags.Users);
 }
 }

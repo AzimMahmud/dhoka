@@ -9,25 +9,8 @@ internal sealed class GetCommentByIdQueryHandler(ICommentRepository commentRepos
 {
     public async Task<Result<CommentResponse>> Handle(GetCommentByIdQuery query, CancellationToken cancellationToken)
     {
-        // CommentResponse? comment = await context.Comments
-        //     .Where(comment => comment.Id == query.CommentId )
-        //     .Select(post => new CommentResponse(
-        //             post.Id,
-        //             post.PostId,
-        //             post.ContactInfo,
-        //             post.Description,
-        //             post.CreatedAt
-        //         ))
-        //         .SingleOrDefaultAsync(cancellationToken);
-
-
         CommentResponse? comment = await commentRepository.GetByIdAsync(query.CommentId);
 
-        if (comment is null)
-        {
-            return Result.Failure<CommentResponse>(CommentErrors.NotFound(query.CommentId));
-        }
-
-        return comment;
+        return comment ?? Result.Failure<CommentResponse>(CommentErrors.NotFound(query.CommentId));
     }
 }

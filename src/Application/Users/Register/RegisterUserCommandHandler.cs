@@ -1,10 +1,8 @@
 ﻿using Application.Abstractions.Authentication;
-using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Domain.Roles;
 using Domain.Tokens;
 using Domain.Users;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Npgsql;
 using SharedKernel;
@@ -13,7 +11,8 @@ using SharedKernel;
 namespace Application.Users.Register;
 
 internal sealed class RegisterUserCommandHandler(
-    IApplicationDbContext context,
+    IUserRepository userRepository,
+    IEmailVerificationTokenRepository emailVerificationTokenRepository,
     IPasswordHasher passwordHasher,
     IEmailService emailService,
     IConfiguration configuration)
@@ -21,7 +20,8 @@ internal sealed class RegisterUserCommandHandler(
 {
     public async Task<Result<Guid>> Handle(RegisterUserCommand request, CancellationToken cancellationToken)
     {
-        if (await context.Users.AnyAsync(u => u.Email == request.Email, cancellationToken: cancellationToken))
+        User existingUser = await userRepository.GetByEmailAsync(request.Email);
+        if (existingUser != null)
         {
             throw new ApplicationException("The email is already in use");
         }
@@ -32,16 +32,13 @@ internal sealed class RegisterUserCommandHandler(
             Email = request.Email,
             FirstName = request.FirstName,
             LastName = request.LastName,
-            PasswordHash = passwordHasher.Hash("Demo@1234")
+            PasswordHash = passwordHasher.Hash(request.Password),
+            CreatedAt = DateTime.UtcNow,
+            Role = !string.IsNullOrEmpty(request.Role) ? request.Role :nameof(Role.Member),
+            Status = nameof(Status.Active)
         };
-        context.Users.Add(user);
 
-        var userRole = new UserRole
-        {
-            UserId = user.Id,
-            RoleId = Role.MemberId
-        };
-        context.UserRoles.Add(userRole);
+        await userRepository.CreateAsync(user);
 
         DateTime utcNow = DateTime.UtcNow;
         var verificationToken = new EmailVerificationToken
@@ -52,21 +49,10 @@ internal sealed class RegisterUserCommandHandler(
             ExpiresOnUtc = utcNow.AddDays(1)
         };
 
-        context.EmailVerificationTokens.Add(verificationToken);
+        await emailVerificationTokenRepository.CreateAsync(verificationToken);
 
-        try
-        {
-            await context.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateException e)
-            when (e.InnerException is NpgsqlException { SqlState: PostgresErrorCodes.UniqueViolation })
-        {
-            return Result<Guid>.ValidationFailure(UserErrors.EmailNotUnique);
-        }
-
-        string verificationLink =  $"{configuration["ClientAppUrl"]}/verify-email?token={verificationToken.Id}";
-
-
+        string verificationLink = $"{configuration["ClientAppUrl"]}/verify-email?token={verificationToken.Id}";
+        
         string emailBody = $@"
             <p>Hello,</p>
 
@@ -79,14 +65,14 @@ internal sealed class RegisterUserCommandHandler(
             <p>Thanks,<br/>The Dhoka Team</p>
         ";
 
-       bool res =  await emailService.SendEmailAsync(new EmailModel
-       {
-           From = "azimmahamud@gmail.com",
-           ToEmail = user.Email,
-           Subject = "User account verification",
-           Body = emailBody,
-           IsHtml = false
-       });
+        await emailService.SendEmailAsync(new EmailModel
+        {
+            From = "azimmahamud@gmail.com",
+            ToEmail = user.Email,
+            Subject = "User account verification",
+            Body = emailBody,
+            IsHtml = false
+        });
 
         return user.Id;
     }

@@ -1,4 +1,5 @@
 ﻿using System.Text;
+using System.Threading.RateLimiting;
 using Amazon;
 using Amazon.CloudFront;
 using Amazon.DynamoDBv2;
@@ -6,28 +7,30 @@ using Amazon.DynamoDBv2.DataModel;
 using Amazon.Runtime;
 using Amazon.S3;
 using Application.Abstractions.Authentication;
-using Application.Abstractions.Data;
 using Domain.Comments;
+using Domain.Contacts;
 using Domain.Posts;
+using Domain.Tokens;
+using Domain.Users;
 using Infrastructure.Authentication;
-using Infrastructure.Authorization;
+using Infrastructure.BackgroundServices;
 using Infrastructure.Comments;
-using Infrastructure.Database;
+using Infrastructure.Contacts;
 using Infrastructure.ImageServices;
 using Infrastructure.MessageServices;
 using Infrastructure.Posts;
+using Infrastructure.Tokens;
+using Infrastructure.Users;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using OpenSearch.Client;
 using SharedKernel;
-using DateTimeProvider = Infrastructure.Time.DateTimeProvider;
-using IDateTimeProvider = SharedKernel.IDateTimeProvider;
 
 
 namespace Infrastructure;
@@ -41,20 +44,18 @@ public static class DependencyInjection
             .AddServices()
             .AddAwsServices(configuration)
             .AddDatabase(configuration)
-            .AddHealthChecks(configuration)
             .AddAuthenticationInternal(configuration)
             .AddAuthorizationInternal();
 
     private static IServiceCollection AddServices(this IServiceCollection services)
     {
-        services.AddSingleton<IDateTimeProvider, DateTimeProvider>();
 
         services.AddHttpClient<ISmsSender, SmsService>();
         services.AddScoped<IEmailService, EmailService>();
 
         services.AddCors(o => o.AddPolicy("MyPolicy", builder =>
         {
-            builder.WithOrigins("*")
+            builder.WithOrigins("https://www.dhoka.io")
                 .AllowAnyMethod()
                 .AllowAnyHeader();
         }));
@@ -64,27 +65,35 @@ public static class DependencyInjection
             options.MultipartBodyLengthLimit = 10 * 1024 * 1024; // 10 MB
         });
 
+        // Add rate limiter service
+        services.AddRateLimiter(options =>
+        {
+            options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                    factory: _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 5, // 5 requests
+                        Window = TimeSpan.FromSeconds(10), // per 10 seconds
+                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                        QueueLimit = 2
+                    }));
+
+            options.RejectionStatusCode = 429;
+        });
+
         services.AddMemoryCache();
-
-
+        services.AddHostedService<DailyJobService>();
         services.AddSingleton<PasswordHasher>();
         services.AddScoped<TokenProvider>();
 
+        services.AddHostedService<DailyJobService>();
 
         return services;
     }
 
     private static IServiceCollection AddDatabase(this IServiceCollection services, IConfiguration configuration)
     {
-        string? connectionString = configuration.GetConnectionString("Database");
-
-        services.AddDbContext<ApplicationDbContext>(options => options
-            .UseNpgsql(connectionString, npgsqlOptions =>
-                npgsqlOptions.MigrationsHistoryTable(HistoryRepository.DefaultTableName, Schemas.Default))
-            .UseSnakeCaseNamingConvention());
-
-        services.AddScoped<IApplicationDbContext>(sp => sp.GetRequiredService<ApplicationDbContext>());
-
         var credentials = new BasicAWSCredentials(configuration["AWS:AccessKey"], configuration["AWS:SecretKey"]);
         services.AddSingleton<IAmazonDynamoDB>(_ => new AmazonDynamoDBClient(credentials, RegionEndpoint.APSoutheast1));
 
@@ -106,15 +115,10 @@ public static class DependencyInjection
         services.AddScoped<IPostRepository, PostRepository>();
         services.AddScoped<ICommentRepository, CommentRepository>();
         services.AddScoped<IPostCounterRepository, PostCounterRepository>();
-
-        return services;
-    }
-
-    private static IServiceCollection AddHealthChecks(this IServiceCollection services, IConfiguration configuration)
-    {
-        services
-            .AddHealthChecks()
-            .AddNpgSql(configuration.GetConnectionString("Database")!);
+        services.AddScoped<IContactRepository, ContactRepository>();
+        services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+        services.AddScoped<IEmailVerificationTokenRepository, EmailVerificationTokenRepository>();
 
         return services;
     }
@@ -147,12 +151,6 @@ public static class DependencyInjection
     private static IServiceCollection AddAuthorizationInternal(this IServiceCollection services)
     {
         services.AddAuthorization();
-
-        services.AddScoped<PermissionProvider>();
-
-        services.AddTransient<IAuthorizationHandler, PermissionAuthorizationHandler>();
-
-        services.AddTransient<IAuthorizationPolicyProvider, PermissionAuthorizationPolicyProvider>();
 
         return services;
     }

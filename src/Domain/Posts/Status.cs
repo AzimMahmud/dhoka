@@ -8,3 +8,9 @@ public enum Status
     Rejected,
     Settled,
 }
+
+public enum AnonymityPreference
+{
+    Public,
+    Anonymous
+}

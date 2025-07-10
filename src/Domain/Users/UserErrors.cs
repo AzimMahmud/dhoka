@@ -8,7 +8,7 @@ public static class UserErrors
         "Users.NotFound",
         $"The user with the Id = '{userId}' was not found");
 
-    public static Error Unauthorized() => Error.Failure(
+    public static readonly Error Unauthorized = Error.Conflict(
         "Users.Unauthorized",
         "You are not authorized to perform this action.");
 
@@ -22,6 +22,10 @@ public static class UserErrors
     
     public static readonly Error TokenInvalid = Error.Conflict(
         "Users.EmailVerificationToken",
+        "The provided token isn't valid."); 
+    
+    public static readonly Error RefreshTokenInvalid = Error.Conflict(
+        "Users.RefreshToken",
         "The provided token isn't valid."); 
     
     public static readonly Error PasswordNotMatch = Error.Conflict(

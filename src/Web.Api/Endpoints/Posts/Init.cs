@@ -10,7 +10,7 @@ internal sealed class Init : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
-        app.MapPost("posts/init", async (ISender sender, CancellationToken cancellationToken) =>
+        app.MapPost("posts/init", async ( ISender sender, CancellationToken cancellationToken) =>
             {
                 var command = new InitPostCommand();
 

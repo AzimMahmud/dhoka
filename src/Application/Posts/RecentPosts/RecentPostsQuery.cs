@@ -17,7 +17,7 @@ internal class RecentPostsQueryHandler(
     {
         List<PostsResponse>? recentPosts = await cache.GetOrCreateAsync("RecentPosts", async entry =>
         {
-            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10);
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5);
             return await postRepository.GetRecentPostsAsync();
         });
 

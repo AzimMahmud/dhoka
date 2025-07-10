@@ -1,4 +1,4 @@
-﻿using Application.Posts.Approve;
+﻿using Application.Posts.Admin.Approve;
 using Domain.Roles;
 using MediatR;
 using SharedKernel;

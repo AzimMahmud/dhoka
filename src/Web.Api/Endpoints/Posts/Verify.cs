@@ -10,14 +10,36 @@ internal sealed class Verify : IEndpoint
 {
     public sealed class Request
     {
-        public int Otp { get; set;}
-        public string Title { get; set;}
-        public string TransactionMode { get; set;}
-        public string PaymentType { get; set;}
-        public string Description { get; set;}
-        public List<string> MobileNumbers { get; set; } = [];
+
+        public Guid Id { get; set; }
+    
+        public string ScamType { get; set; }
+
+  
+        public string Title { get; set; }
+        
+        
+        public string PaymentType { get; set; }
+        
+        public List<string> MobileNumbers { get; set; } = new List<string>();
+        
         public decimal Amount { get; set; }
+
+        public string PaymentDetails { get; set; }
+
+        public DateTime ScamDateTime { get; set; }
+        
+        public string AnonymityPreference { get; set; }
+
+        public string Description { get; set; }
+
+        public string Name { get; set; }
+        public string ContactNumber { get; set; }
+        
+        public int Otp { get; set; }
+        
     }
+
 
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
@@ -26,16 +48,23 @@ internal sealed class Verify : IEndpoint
             var command = new VerifyPostCommand
             {
                 PostId = id,
+                ScamType = request.ScamType,
                 Otp = request.Otp,
                 Title = request.Title,
-                TransactionMode = request.TransactionMode,
-                PaymentType = request.PaymentType,
+                Amount = request.Amount,
+                PaymentDetails = request.PaymentDetails,
+                ScamDateTime = request.ScamDateTime,
+                AnonymityPreference = request.AnonymityPreference,
                 Description = request.Description,
+                ContactNumber = request.ContactNumber,
+                Name = request.Name,
                 MobileNumbers = request.MobileNumbers,
-                Amount = request.Amount
+                PaymentType = request.PaymentType,
             };
 
             Result<Guid> result = await sender.Send(command, cancellationToken);
+            
+            
 
             return result.Match(Results.Ok, CustomResults.Problem);
         })

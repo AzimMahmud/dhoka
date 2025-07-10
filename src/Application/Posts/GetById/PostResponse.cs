@@ -2,11 +2,16 @@
 
 public record PostResponse(
     Guid Id,
+    string? ScamType,
     string? Title,
-    string? TransactionMode,
     string? PaymentType,
-    string? Description,
-    List<string>? MobilNumbers,
+    List<string>? MobileNumbers,
     decimal? Amount,
-    string Status
+    string? PaymentDetails,
+    DateTime? ScamDateTime,
+    string? AnonymityPreference,
+    string? Description,
+    string? Status,
+    string CreatedAt,
+    List<string>? ImageUrls
 );

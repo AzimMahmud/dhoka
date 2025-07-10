@@ -18,8 +18,6 @@ internal sealed class SearchMetrics : IEndpoint
 
                 return result.Match(Results.Ok, CustomResults.Problem);
             })
-            .WithTags(Tags.Metrics)
-            // .RequireAuthorization()
-            ;
+            .WithTags(Tags.Metrics);
     }
 }

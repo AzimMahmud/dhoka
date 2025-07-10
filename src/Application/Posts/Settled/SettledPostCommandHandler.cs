@@ -1,6 +1,7 @@
 using Application.Abstractions.Messaging;
 using Domain.Posts;
 using SharedKernel;
+using Status = Domain.Posts.Status;
 
 namespace Application.Posts.Settled;
 
@@ -12,7 +13,7 @@ internal sealed class SettledPostCommandHandler(
     {
         Post? post =  await postRepository.GetByIdAsync(command.PostId);
         
-        if (post is null)
+        if (post.Id == Guid.Empty)
         {
             return Result.Failure(PostErrors.NotFound(command.PostId));
         }
@@ -21,8 +22,8 @@ internal sealed class SettledPostCommandHandler(
         {
             return Result.Failure(PostErrors.NotApproved(command.PostId));
         }
-        
-        post.IsSettled = true;
+
+        post.Status = nameof(Status.Settled);
         
         await postRepository.UpdateAsync(post);
         

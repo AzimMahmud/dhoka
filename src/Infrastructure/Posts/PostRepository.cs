@@ -4,40 +4,74 @@ using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 using Domain;
 using Domain.Posts;
+using Infrastructure.Database;
+using Microsoft.Extensions.Logging;
 using OpenSearch.Client;
+using OpenSearch.Net;
+using Polly;
+using SharedKernel;
+using Status = Domain.Posts.Status;
 
 namespace Infrastructure.Posts;
 
-public class PostRepository : IPostRepository
+public partial class PostRepository : IPostRepository
 {
-    private readonly IAmazonDynamoDB _dynamoDB;
+    private readonly IImageService _imageService;
+    private readonly IAmazonDynamoDB _dynamoDb;
     private readonly IOpenSearchClient _openSearchClient;
+    private readonly ILogger<PostRepository> _logger;
+    private const string IndexName = "dhoka-data-index";
+    private readonly Polly.Retry.AsyncRetryPolicy _retryPolicy;
+    
+    private const string StatusAttribute = "Status";
+    private const string InitStatusValue = "Init";
+    private const string PartitionKey = "Id";
+    private const string ImageUrlsAttr = "ImageUrls";
 
-    private readonly string TableName = "Posts";
-    private readonly string IndexName = "dhoka-data-index"; // OpenSearch index name
-
-    public PostRepository(IAmazonDynamoDB dynamoDB, IOpenSearchClient openSearchClient)
+    public PostRepository(
+        IImageService imageService,
+        IAmazonDynamoDB dynamoDb,
+        IOpenSearchClient openSearchClient,
+        ILogger<PostRepository> logger)
     {
-        _dynamoDB = dynamoDB;
-        _openSearchClient = openSearchClient;
+        _imageService = imageService ?? throw new ArgumentNullException(nameof(imageService));
+        _dynamoDb = dynamoDb ?? throw new ArgumentNullException(nameof(dynamoDb));
+        _openSearchClient = openSearchClient ?? throw new ArgumentNullException(nameof(openSearchClient));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+        _retryPolicy = Policy
+            .Handle<Exception>(ex =>
+                ex.Message.Contains("502") ||
+                ex.Message.Contains("503") ||
+                ex is System.Net.Http.HttpRequestException ||
+                ex is OpenSearchClientException)
+            .WaitAndRetryAsync(
+                retryCount: 3,
+                sleepDurationProvider: attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)),
+                onRetry: (exception, timeSpan, retryCount, context) =>
+                    _logger.LogWarning(
+                        $"Retry {retryCount} after {timeSpan.TotalSeconds}s due to: {exception.Message}")
+            );
     }
 
     public async Task<Post> GetByIdAsync(Guid id)
     {
+        _logger.LogInformation($"Retrieving post {id} from DynamoDB.");
         var request = new GetItemRequest
         {
-            TableName = TableName,
+            TableName = Tables.Posts,
             Key = new Dictionary<string, AttributeValue>
             {
-                ["Id"] = new AttributeValue { S = id.ToString() } // Adjust based on schema
+                ["Id"] = new AttributeValue { S = id.ToString() }
             }
         };
 
         try
         {
-            GetItemResponse response = await _dynamoDB.GetItemAsync(request);
+            GetItemResponse? response = await _dynamoDb.GetItemAsync(request);
             if (response.Item == null || response.Item.Count == 0)
             {
+                _logger.LogInformation($"Post {id} not found in DynamoDB.");
                 return null;
             }
 
@@ -45,7 +79,8 @@ public class PostRepository : IPostRepository
         }
         catch (AmazonDynamoDBException ex)
         {
-            throw new InvalidOperationException($"Failed to retrieve post with ID {id}: {ex.Message}", ex);
+            _logger.LogError(ex, $"Failed to retrieve post {id} from DynamoDB.");
+            throw new InvalidOperationException($"Failed to retrieve post {id}: {ex.Message}", ex);
         }
     }
 
@@ -54,7 +89,9 @@ public class PostRepository : IPostRepository
         string? paginationToken,
         string? statusFilter = null)
     {
-        // 1) Decode pagination token
+        _logger.LogInformation(
+            $"Fetching posts with pageSize={pageSize}, token={paginationToken}, statusFilter={statusFilter}.");
+
         Dictionary<string, AttributeValue>? exclusiveStartKey = null;
         if (!string.IsNullOrWhiteSpace(paginationToken))
         {
@@ -63,48 +100,36 @@ public class PostRepository : IPostRepository
                 byte[] decoded = Convert.FromBase64String(paginationToken);
                 string json = Encoding.UTF8.GetString(decoded);
                 exclusiveStartKey = JsonSerializer.Deserialize<Dictionary<string, AttributeValue>>(
-                    json,
-                    new JsonSerializerOptions { Converters = { new AttributeValueConverter() } }
-                );
+                    json, new JsonSerializerOptions { Converters = { new AttributeValueConverter() } });
             }
-            catch
+            catch (Exception ex)
             {
+                _logger.LogWarning(ex, $"Failed to decode pagination token: {paginationToken}. Proceeding without it.");
                 exclusiveStartKey = null;
             }
         }
 
-        // If a statusFilter is provided, do a Query on the GSI
         if (!string.IsNullOrWhiteSpace(statusFilter))
         {
-            var qr = new QueryRequest
+            var queryRequest = new QueryRequest
             {
-                TableName = "Posts",
-                IndexName = "CreatedAtIndex", // your GSI
+                TableName = Tables.Posts,
+                IndexName = "CreatedAtIndex",
                 KeyConditionExpression = "#st = :statusVal",
-                ExpressionAttributeNames = new Dictionary<string, string> { { "#st", "Status" } },
+                ExpressionAttributeNames = new Dictionary<string, string> { { "#st", StatusAttribute } },
                 ExpressionAttributeValues = new Dictionary<string, AttributeValue>
                 {
                     { ":statusVal", new AttributeValue { S = statusFilter } }
                 },
-                ScanIndexForward = false, // newest first
+                ScanIndexForward = false,
                 Limit = pageSize,
                 ExclusiveStartKey = exclusiveStartKey
             };
 
-            QueryResponse? resp = await _dynamoDB.QueryAsync(qr);
-
-            var items = resp.Items.Select(MapToPostResponse).ToList();
-
-            bool hasMore = resp.LastEvaluatedKey?.Count > 0;
-            string? nextToken = null;
-            if (hasMore)
-            {
-                string tokJson = JsonSerializer.Serialize(resp.LastEvaluatedKey, new JsonSerializerOptions
-                {
-                    Converters = { new AttributeValueConverter() }
-                });
-                nextToken = Convert.ToBase64String(Encoding.UTF8.GetBytes(tokJson));
-            }
+            QueryResponse? response = await _dynamoDb.QueryAsync(queryRequest);
+            var items = response.Items.Select(MapToPostResponse).ToList();
+            bool hasMore = response.LastEvaluatedKey?.Count > 0;
+            string? nextToken = hasMore ? EncodePaginationToken(response.LastEvaluatedKey) : null;
 
             return new PagedResult<PostsResponse>
             {
@@ -114,27 +139,16 @@ public class PostRepository : IPostRepository
             };
         }
 
-        // Otherwise, do an unfiltered Scan
-        var scanReq = new ScanRequest
+        var scanRequest = new ScanRequest
         {
-            TableName = "Posts",
+            TableName = Tables.Posts,
             Limit = pageSize,
             ExclusiveStartKey = exclusiveStartKey
         };
-        ScanResponse? scanResp = await _dynamoDB.ScanAsync(scanReq);
-
-        var scanItems = scanResp.Items.Select(MapToPostResponse).ToList();
-
-        bool scanHasMore = scanResp.LastEvaluatedKey?.Count > 0;
-        string? scanNext = null;
-        if (scanHasMore)
-        {
-            string tokJson = JsonSerializer.Serialize(scanResp.LastEvaluatedKey, new JsonSerializerOptions
-            {
-                Converters = { new AttributeValueConverter() }
-            });
-            scanNext = Convert.ToBase64String(Encoding.UTF8.GetBytes(tokJson));
-        }
+        ScanResponse? scanResponse = await _dynamoDb.ScanAsync(scanRequest);
+        var scanItems = scanResponse.Items.Select(MapToPostResponse).ToList();
+        bool scanHasMore = scanResponse.LastEvaluatedKey?.Count > 0;
+        string? scanNext = scanHasMore ? EncodePaginationToken(scanResponse.LastEvaluatedKey) : null;
 
         return new PagedResult<PostsResponse>
         {
@@ -146,317 +160,445 @@ public class PostRepository : IPostRepository
 
     public async Task<List<PostsResponse>> GetRecentPostsAsync()
     {
+        _logger.LogInformation("Fetching 5 most recent approved public posts.");
         var request = new QueryRequest
         {
-            TableName = "Posts",
-            IndexName = "CreatedAtIndex", // Ensure this GSI exists and is configured properly
+            TableName = Tables.Posts,
+            IndexName = "CreatedAtIndex",
             KeyConditionExpression = "#st = :statusVal",
             ExpressionAttributeNames = new Dictionary<string, string>
             {
-                { "#st", "Status" } // Alias for reserved keyword
+                { "#st", StatusAttribute },
             },
             ExpressionAttributeValues = new Dictionary<string, AttributeValue>
             {
-                { ":statusVal", new AttributeValue { S = nameof(Status.Approved) } }
+                { ":statusVal", new AttributeValue { S = nameof(Status.Approved) } },
             },
-            ScanIndexForward = false, // DESC order for recent posts
+            ScanIndexForward = false,
             Limit = 5
         };
 
-        QueryResponse? response = await _dynamoDB.QueryAsync(request);
-
-        var items = response.Items.Select(item => new PostsResponse
-        {
-            Id = Guid.Parse(item["Id"].S),
-            Title = item.GetValueOrDefault("Title")?.S,
-            TransactionMode = item.GetValueOrDefault("TransactionMode")?.S,
-            PaymentType = item.GetValueOrDefault("PaymentType")?.S,
-            Description = item.GetValueOrDefault("Description")?.S,
-            MobilNumbers = item.TryGetValue("MobilNumbers", out AttributeValue? mn)
-                ? mn.L.Select(x => x.S).ToList()
-                : [],
-            Amount = item.TryGetValue("Amount", out AttributeValue? amt) ? decimal.Parse(amt.N) : (decimal?)null,
-            Status = item.GetValueOrDefault("Status")?.S ?? string.Empty,
-            CreatedAt = item.TryGetValue("CreatedAt", out AttributeValue? ca) ? DateTime.Parse(ca.S) : DateTime.MinValue
-        }).ToList();
-
-        return items;
+        QueryResponse? response = await _dynamoDb.QueryAsync(request);
+        return response.Items.Select(MapToPostResponse).ToList();
     }
-
 
     public async Task CreateAsync(Post post)
     {
+        ValidatePost(post, isCreate: true);
+        _logger.LogInformation($"Creating post {post.Id} in DynamoDB.");
         var request = new PutItemRequest
         {
-            TableName = TableName,
+            TableName = Tables.Posts,
             Item = MapToDynamoDb(post)
         };
 
-        await _dynamoDB.PutItemAsync(request);
+        try
+        {
+            await _dynamoDb.PutItemAsync(request);
+            _logger.LogInformation($"Successfully created post {post.Id} in DynamoDB.");
+        }
+        catch (AmazonDynamoDBException ex)
+        {
+            _logger.LogError(ex, $"Failed to create post {post.Id} in DynamoDB.");
+            throw new InvalidOperationException($"Failed to create post {post.Id}: {ex.Message}", ex);
+        }
     }
 
     public async Task UpdateAsync(Post post)
     {
-        // Overwrite the entire item
-        var request = new PutItemRequest
-        {
-            TableName = TableName,
-            Item = MapToDynamoDb(post)
-        };
-
-        await _dynamoDB.PutItemAsync(request);
-
+        ValidatePost(post, isCreate: false);
+        _logger.LogInformation($"Updating post {post.Id} in DynamoDB.");
 
         if (post.IsApproved)
         {
-            IndexResponse? response = await _openSearchClient.IndexAsync(post, i => i
-                    .Index("dhoka-data-index")
-                    .Id(post.Id) // optional, uses product.Id as document ID
-            );
-
-            if (!response.IsValid)
+            _logger.LogInformation($"Post {post.Id} is approved, indexing in OpenSearch.");
+            var indexedPost = new IndexedPost
             {
-                // handle error
-                throw new Exception($"OpenSearch indexing failed: {response.OriginalException.Message}");
+                Id = post.Id,
+                ScamType = post.ScamType,
+                Title = post.Title,
+                Description = post.Description,
+                PaymentType = post.PaymentType,
+                ScamDateTime = post.ScamDateTime,
+                MobileNumbers = post.MobileNumbers ?? new List<string>(),
+                PaymentDetails = post.PaymentDetails,
+                Amount = post.Amount,
+                CreatedAt = post.CreatedAt,
+            };
+
+            IndexResponse? opensearchResponse = null;
+            try
+            {
+                opensearchResponse = await _retryPolicy.ExecuteAsync(async () =>
+                    await _openSearchClient.IndexAsync(indexedPost, i => i
+                        .Index(IndexName)
+                        .Id(post.Id.ToString())
+                    ));
+
+                if (!opensearchResponse.IsValid)
+                {
+                    string errMsg = opensearchResponse.OriginalException?.Message ?? "Unknown OpenSearch error";
+                    _logger.LogError($"OpenSearch indexing failed for post {post.Id}: {errMsg}");
+                    throw new InvalidOperationException($"OpenSearch indexing failed: {errMsg}");
+                }
+
+                _logger.LogInformation($"Successfully indexed post {post.Id} in OpenSearch.");
             }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Failed to index post {post.Id} in OpenSearch.");
+                throw new InvalidOperationException($"Failed to index post {post.Id}: {ex.Message}", ex);
+            }
+        }
+
+        var request = new PutItemRequest
+        {
+            TableName = Tables.Posts,
+            Item = MapToDynamoDb(post)
+        };
+
+        try
+        {
+            await _dynamoDb.PutItemAsync(request);
+            _logger.LogInformation($"Successfully updated post {post.Id} in DynamoDB.");
+        }
+        catch (AmazonDynamoDBException dbEx)
+        {
+            _logger.LogError(dbEx, $"DynamoDB update failed for post {post.Id}. Attempting cleanup.");
+            if (post.IsApproved)
+            {
+                try
+                {
+                    DeleteResponse? deleteResponse = await _retryPolicy.ExecuteAsync(async () =>
+                        await _openSearchClient.DeleteAsync<IndexedPost>(
+                            post.Id.ToString(),
+                            d => d.Index(IndexName)
+                        ));
+
+                    if (!deleteResponse.IsValid)
+                    {
+                        _logger.LogWarning(
+                            $"Compensating delete failed for post {post.Id} in OpenSearch: {deleteResponse.ServerError}");
+                    }
+                    else
+                    {
+                        _logger.LogInformation($"Compensating delete succeeded for post {post.Id} in OpenSearch.");
+                    }
+                }
+                catch (Exception cleanupEx)
+                {
+                    _logger.LogError(cleanupEx,
+                        $"Failed to delete post {post.Id} from OpenSearch during cleanup. System may be inconsistent.");
+                    // Note: Consider queuing for later reconciliation in a production system.
+                }
+            }
+
+            throw new InvalidOperationException(
+                $"Failed to update post {post.Id} in DynamoDB after OpenSearch indexing. " +
+                $"Cleanup attempted. Original error: {dbEx.Message}",
+                dbEx);
         }
     }
 
     public async Task DeleteAsync(Guid id)
     {
+        _logger.LogInformation($"Deleting post {id} from DynamoDB.");
         var request = new DeleteItemRequest
         {
-            TableName = TableName,
+            TableName = Tables.Posts,
             Key = new Dictionary<string, AttributeValue>
             {
                 ["Id"] = new AttributeValue { S = id.ToString() }
             }
         };
 
-        await _dynamoDB.DeleteItemAsync(request);
+        try
+        {
+            DeleteItemResponse? response = await _dynamoDb.DeleteItemAsync(request);
+            _logger.LogInformation($"Successfully deleted post {id} from DynamoDB.");
+        }
+        catch (AmazonDynamoDBException ex)
+        {
+            _logger.LogError(ex, $"Failed to delete post {id} from DynamoDB.");
+            throw new InvalidOperationException($"Failed to delete post {id}: {ex.Message}", ex);
+        }
+    }
+
+    public async Task EnsurePostIndexedAsync(Guid id)
+    {
+        _logger.LogInformation($"Ensuring post {id} is indexed in OpenSearch.");
+        GetResponse<IndexedPost>? getResponse = await _retryPolicy.ExecuteAsync(async () =>
+            await _openSearchClient.GetAsync<IndexedPost>(id.ToString(), g => g.Index(IndexName)));
+
+        if (getResponse.IsValid && getResponse.Source != null)
+        {
+            _logger.LogInformation($"Post {id} already indexed in OpenSearch.");
+            return;
+        }
+
+        var dynamoRequest = new GetItemRequest
+        {
+            TableName = Tables.Posts,
+            Key = new Dictionary<string, AttributeValue>
+            {
+                ["Id"] = new AttributeValue { S = id.ToString() }
+            }
+        };
+
+        Post post;
+        try
+        {
+            GetItemResponse? dynamoResponse = await _dynamoDb.GetItemAsync(dynamoRequest);
+            if (dynamoResponse.Item == null || dynamoResponse.Item.Count == 0)
+            {
+                _logger.LogWarning($"Post {id} not found in DynamoDB for indexing.");
+                return;
+            }
+
+            post = MapFromDynamoDb(dynamoResponse.Item);
+        }
+        catch (AmazonDynamoDBException ex)
+        {
+            _logger.LogError(ex, $"Failed to fetch post {id} from DynamoDB for indexing.");
+            throw new InvalidOperationException($"Failed to fetch post {id}: {ex.Message}", ex);
+        }
+
+        if (!post.IsApproved)
+        {
+            _logger.LogInformation($"Post {id} is not approved, skipping indexing.");
+            return;
+        }
+
+        var indexedPost = new IndexedPost
+        {
+            Id = post.Id,
+            ScamType = post.ScamType,
+            Title = post.Title,
+            Description = post.Description,
+            PaymentType = post.PaymentType,
+            ScamDateTime = post.ScamDateTime,
+            MobileNumbers = post.MobileNumbers ?? new List<string>(),
+            PaymentDetails = post.PaymentDetails,
+            Amount = post.Amount,
+            CreatedAt = post.CreatedAt
+        };
+
+        IndexResponse? indexResponse = await _retryPolicy.ExecuteAsync(async () =>
+            await _openSearchClient.IndexAsync(indexedPost, i => i
+                .Index(IndexName)
+                .Id(post.Id.ToString())
+            ));
+
+        if (!indexResponse.IsValid)
+        {
+            string errorMsg = indexResponse.OriginalException?.Message ?? "Unknown error";
+            _logger.LogError($"Failed to index post {id} in OpenSearch: {errorMsg}");
+            throw new InvalidOperationException($"Failed to index post {id}: {errorMsg}");
+        }
+
+        _logger.LogInformation($"Successfully indexed post {id} in OpenSearch.");
     }
 
     public async Task<PagedSearchResult<PostsResponse>> SearchAsync(PostSearchRequest request)
     {
+        _logger.LogInformation($"Searching posts with term: {request.SearchTerm}, page: {request.CurrentPage}");
+        if (string.IsNullOrWhiteSpace(request.SearchTerm))
+        {
+            return new PagedSearchResult<PostsResponse>
+            {
+                Items = new List<PostsResponse>(),
+                CurrentPage = request.CurrentPage < 1 ? 1 : request.CurrentPage,
+                PageSize = request.PageSize < 1 ? 10 : request.PageSize,
+                TotalCount = 0
+            };
+        }
+
         int currentPage = request.CurrentPage < 1 ? 1 : request.CurrentPage;
         int pageSize = request.PageSize < 1 ? 10 : request.PageSize;
         int from = (currentPage - 1) * pageSize;
 
-        SearchDescriptor<Post>? searchDescriptor = new SearchDescriptor<Post>()
+        SearchDescriptor<PostsResponse>? searchDescriptor = new SearchDescriptor<PostsResponse>()
+            .Index(IndexName)
             .From(from)
             .Size(pageSize)
-            .Scroll("1m")
-            .Query(q =>
-            {
-                var mustQueryContainer = new List<QueryContainer>();
-                var filterQueryContainer = new List<QueryContainer>();
-
-
-                if (!string.IsNullOrWhiteSpace(request.SearchTerm))
-                {
-                    mustQueryContainer.Add(q.MultiMatch(m => m
-                            .Fields(f => f
-                                .Field(p => p.Title)
-                                .Field(p => p.Description)
-                                .Field(p => p.MobilNumbers)
-                            )
-                            .Query(request.SearchTerm)
-                            .Type(TextQueryType.MostFields) // Tries to match the best field
-                            .Fuzziness(Fuzziness.Auto) // Enables fuzzy matching
-                            .Operator(Operator.Or) // All terms must match (use OR if you prefer leniency)
-                            .MinimumShouldMatch("75%") // Optional: only 75% of terms need to match
-                    ));
-                }
-
-                filterQueryContainer.Add(q.Match(m => m
-                    .Field(p => p.Status)
-                    .Query(nameof(Status.Approved))));
-
-                return q.Bool(b => b
-                        .Must(mustQueryContainer.ToArray()) // Scoring conditions
-                        .Filter(filterQueryContainer.ToArray()) // Non-scoring conditions
-                );
-            });
-
+            .Query(q => q
+                .MultiMatch(m => m
+                    .Fields(f => f
+                        .Field(p => p.Title)
+                        .Field(p => p.Description)
+                        .Field(p => p.ScamType)
+                        .Field(p => p.PaymentType)
+                    )
+                    .Query(request.SearchTerm)
+                    .Type(TextQueryType.MostFields)
+                    .Fuzziness(Fuzziness.Auto)
+                    .Operator(Operator.Or)
+                    .MinimumShouldMatch("75%")
+                )
+            );
 
         ISearchResponse<PostsResponse>? response = await _openSearchClient.SearchAsync<PostsResponse>(searchDescriptor);
+        if (!response.IsValid)
+        {
+            _logger.LogError($"Search failed: {response.ServerError}");
+            throw new InvalidOperationException($"Search failed: {response.ServerError}");
+        }
 
-        long totalCount = response.Total;
         return new PagedSearchResult<PostsResponse>
         {
             Items = response.Documents,
             CurrentPage = currentPage,
             PageSize = pageSize,
-            TotalCount = totalCount
+            TotalCount = response.Total
         };
     }
 
-    public async Task<List<string?>> AutocompleteTitlesAsync(AutocompleteRequest request)
+    public async Task<List<string>> AutocompleteTitlesAsync(AutocompleteRequest request)
     {
-        // Use MatchPhrasePrefixQuery for case-insensitive prefix matching
+        _logger.LogInformation($"Autocompleting titles with prefix: {request.Prefix}");
         var boolQuery = new BoolQuery
         {
             Must = new QueryContainer[]
             {
                 new MatchPhrasePrefixQuery
                 {
-                    Field = "title", // Use analyzed 'title' field instead of 'title.keyword'
-                    Query = request.Prefix, // No need to force ToLower() here
-                    MaxExpansions = 50 // Limit expansions for performance
-                }
-            },
-            Filter = new QueryContainer[]
-            {
-                new TermQuery
-                {
-                    Field = "status.keyword",
-                    Value = nameof(Status.Approved)
+                    Field = "Title",
+                    Query = request.Prefix,
+                    MaxExpansions = 50
                 }
             }
         };
 
         var searchRequest = new SearchRequest(IndexName)
         {
-            Size = 10, // Increased cap to 10 for more flexibility
+            Size = 10,
             Query = boolQuery,
-            Source = new SourceFilter
+            Source = new SourceFilter { Includes = new[] { "Title" } },
+            Sort = new List<ISort>
             {
-                Includes = new[] { "title" }
+                new FieldSort { Field = "Title.keyword", Order = SortOrder.Ascending }
             }
         };
 
-        try
+        ISearchResponse<TitleResponse>? response = await _openSearchClient.SearchAsync<TitleResponse>(searchRequest);
+        if (!response.IsValid)
         {
-            ISearchResponse<dynamic>? response = await _openSearchClient.SearchAsync<dynamic>(searchRequest);
-
-            if (!response.IsValid)
-            {
-                throw new InvalidOperationException(
-                    $"OpenSearch autocomplete query failed: {response.ServerError?.Error.Reason ?? "Unknown error"}"
-                );
-            }
-
-            return response.Hits
-                .Select(hit => (string?)hit.Source.title)
-                .Where(t => !string.IsNullOrEmpty(t))
-                .Distinct()
-                .ToList();
+            _logger.LogError($"Autocomplete failed: {response.ServerError}");
+            throw new InvalidOperationException($"Autocomplete failed: {response.ServerError?.Error.Reason}");
         }
-        catch (Exception ex)
-        {
-            throw; // Re-throw to allow caller to handle
-        }
+
+        return response.Hits
+            .Select(hit => hit.Source.Title)
+            .Where(t => !string.IsNullOrEmpty(t))
+            .Distinct()
+            .ToList();
     }
 
+    #region Private Helper Methods
 
-    // Helper: map from DynamoDB attributes to Product
     private static Post MapFromDynamoDb(Dictionary<string, AttributeValue> item)
     {
         return new Post
         {
             Id = Guid.Parse(item["Id"].S),
+            ScamType = item.GetValueOrDefault("ScamType")?.S,
             Title = item.GetValueOrDefault("Title")?.S,
-            TransactionMode = item.GetValueOrDefault("TransactionMode")?.S,
             PaymentType = item.GetValueOrDefault("PaymentType")?.S,
             Description = item.GetValueOrDefault("Description")?.S,
-            MobilNumbers = item.GetValueOrDefault("MobilNumbers")?.SS?.ToList() ?? [],
-            Amount = item.GetValueOrDefault("Amount") != null ? decimal.Parse(item["Amount"].N) : null,
-            Status = item.GetValueOrDefault("Status")?.S ?? "",
-            IsSettled = item.GetValueOrDefault("IsSettled")?.BOOL ?? false,
+            MobileNumbers = item.GetValueOrDefault("MobileNumbers")?.SS?.ToList() ?? new List<string>(),
+            Amount = item.TryGetValue("Amount", out AttributeValue? amtAttr) ? decimal.Parse(amtAttr.N) : null,
+            PaymentDetails = item.GetValueOrDefault("PaymentDetails")?.S,
+            ScamDateTime = item.TryGetValue("ScamDateTime", out AttributeValue? dt) ? DateTime.Parse(dt.S) : null,
+            AnonymityPreference = item.GetValueOrDefault("AnonymityPreference")?.S,
+            Name = item.GetValueOrDefault("Name")?.S,
+            Otp = item.TryGetValue("Otp", out AttributeValue? otpAttr) ? int.Parse(otpAttr.N) : int.MinValue,
+            Status = item.GetValueOrDefault("Status")?.S ?? string.Empty,
             ContactNumber = item.GetValueOrDefault("ContactNumber")?.S,
-            Otp = item.GetValueOrDefault("Otp")?.N is string otpStr ? int.Parse(otpStr) : 0,
-            OtpExpirationTime = item.GetValueOrDefault("OtpExpirationTime")?.S != null
-                ? DateTime.Parse(item["OtpExpirationTime"].S)
-                : null,
-            CreatedAt = item.GetValueOrDefault("CreatedAt")?.S != null
-                ? DateTime.Parse(item["CreatedAt"].S)
-                : DateTime.UtcNow,
-            ImageUrls = item.GetValueOrDefault("ImageUrls")?.SS?.ToList() ?? []
+            CreatedAt = item.TryGetValue("CreatedAt", out AttributeValue? ca) ? DateTime.Parse(ca.S) : null,
+            ImageUrls = item.GetValueOrDefault("ImageUrls")?.SS?.ToList() ?? new List<string>()
         };
     }
 
-    // Helper: map Product to DynamoDB attributes
     private static Dictionary<string, AttributeValue> MapToDynamoDb(Post post)
     {
         var item = new Dictionary<string, AttributeValue>
         {
             ["Id"] = new AttributeValue { S = post.Id.ToString() },
+            ["ScamType"] = new AttributeValue { S = post.ScamType ?? string.Empty },
             ["Title"] = new AttributeValue { S = post.Title ?? string.Empty },
-            ["TransactionMode"] = new AttributeValue { S = post.TransactionMode ?? string.Empty },
             ["PaymentType"] = new AttributeValue { S = post.PaymentType ?? string.Empty },
             ["Description"] = new AttributeValue { S = post.Description ?? string.Empty },
             ["Amount"] = post.Amount.HasValue ? new AttributeValue { N = post.Amount.Value.ToString() } : null,
-            ["Status"] = new AttributeValue { S = post.Status ?? string.Empty },
-            ["IsSettled"] = new AttributeValue { BOOL = post.IsSettled ?? false },
-            ["ContactNumber"] = new AttributeValue { S = post.ContactNumber ?? string.Empty },
-            ["Otp"] = new AttributeValue { N = post.Otp.ToString() ?? string.Empty },
-            ["OtpExpirationTime"] = post.OtpExpirationTime.HasValue
-                ? new AttributeValue { S = post.OtpExpirationTime.Value.ToString("o") }
+            ["PaymentDetails"] = new AttributeValue { S = post.PaymentDetails ?? string.Empty },
+            ["ScamDateTime"] = post.ScamDateTime.HasValue
+                ? new AttributeValue { S = post.ScamDateTime.Value.ToString("o") }
                 : null,
-            ["CreatedAt"] = new AttributeValue
-                { S = post.CreatedAt.HasValue ? post.CreatedAt.Value.ToString("o") : string.Empty },
+            ["AnonymityPreference"] = new AttributeValue { S = post.AnonymityPreference ?? string.Empty },
+            ["Name"] = new AttributeValue { S = post.Name ?? string.Empty },
+            ["Status"] = new AttributeValue { S = post.Status ?? string.Empty },
+            ["ContactNumber"] = new AttributeValue { S = post.ContactNumber ?? string.Empty },
+            ["Otp"] = new AttributeValue { N = post.Otp.ToString() },
+            ["CreatedAt"] = post.CreatedAt.HasValue
+                ? new AttributeValue { S = post.CreatedAt.Value.ToString("o") }
+                : null
         };
 
-        if (post.MobilNumbers is not null && post.MobilNumbers.Count > 0)
+        if (post.MobileNumbers?.Count > 0)
         {
-            item["MobilNumbers"] = new AttributeValue { SS = post.MobilNumbers };
+            item["MobileNumbers"] = new AttributeValue { SS = post.MobileNumbers };
         }
 
-        if (post.ImageUrls is not null && post.ImageUrls.Count > 0)
+        if (post.ImageUrls?.Count > 0)
         {
             item["ImageUrls"] = new AttributeValue { SS = post.ImageUrls };
         }
 
-        // Remove nulls (DynamoDB does not accept them)
-        return item
-            .Where(kvp => kvp.Value != null)
-            .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+        return item.Where(kvp => kvp.Value != null).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
     }
-
 
     private PostsResponse MapToPostResponse(Dictionary<string, AttributeValue> item)
     {
         return new PostsResponse
         {
             Id = Guid.Parse(item["Id"].S),
+            ScamType = item.GetValueOrDefault("ScamType")?.S,
             Title = item.GetValueOrDefault("Title")?.S,
-            TransactionMode = item.GetValueOrDefault("TransactionMode")?.S,
+            Anonymity = item.GetValueOrDefault("AnonymityPreference")?.S,
             PaymentType = item.GetValueOrDefault("PaymentType")?.S,
-            Description = item.GetValueOrDefault("Description")?.S,
-            MobilNumbers = item.TryGetValue("MobilNumbers", out AttributeValue? mn)
-                ? mn.L.Select(x => x.S).ToList()
-                : new List<string>(),
-            Amount = item.TryGetValue("Amount", out AttributeValue? amt)
-                ? decimal.Parse(amt.N)
-                : (decimal?)null,
-            Status = item.GetValueOrDefault("Status")?.S ?? string.Empty,
-            CreatedAt = item.TryGetValue("CreatedAt", out AttributeValue? ca)
-                ? DateTime.Parse(ca.S)
-                : DateTime.MinValue,
+            Amount = item.TryGetValue("Amount", out AttributeValue? amtAttr) ? decimal.Parse(amtAttr.N) : null,
+            PaymentDetails = item.GetValueOrDefault("PaymentDetails")?.S,
+            ScamDateTime = item.TryGetValue("ScamDateTime", out AttributeValue? dtAttr) ? DateTime.Parse(dtAttr.S) : null,
+            Status = item.GetValueOrDefault("Status")?.S,
+            CreatedAt = item.TryGetValue("CreatedAt", out AttributeValue? caAttr) ? DateTime.Parse(caAttr.S) : null
         };
     }
 
-    private Dictionary<string, AttributeValue>? DecodePaginationToken(string? paginationToken)
-    {
-        if (string.IsNullOrWhiteSpace(paginationToken))
-        {
-            return null;
-        }
-
-        string json = Encoding.UTF8.GetString(Convert.FromBase64String(paginationToken));
-        return JsonSerializer.Deserialize<Dictionary<string, AttributeValue>>(json, new JsonSerializerOptions
-        {
-            Converters = { new AttributeValueConverter() }
-        });
-    }
-
-
     private string EncodePaginationToken(Dictionary<string, AttributeValue> lastEvaluatedKey)
     {
-        string json = JsonSerializer.Serialize(lastEvaluatedKey, new JsonSerializerOptions
+        string tokJson = JsonSerializer.Serialize(lastEvaluatedKey, new JsonSerializerOptions
         {
             Converters = { new AttributeValueConverter() }
         });
-        return Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
+        return Convert.ToBase64String(Encoding.UTF8.GetBytes(tokJson));
     }
+
+    private void ValidatePost(Post post, bool isCreate)
+    {
+        if (post == null)
+        {
+            throw new ArgumentNullException(nameof(post));
+        }
+
+        if (isCreate && post.Id == Guid.Empty)
+        {
+            throw new ArgumentException("Post ID cannot be empty for creation.");
+        }
+
+        if (string.IsNullOrWhiteSpace(post.Status))
+        {
+            throw new ArgumentException("Status is required.");
+        }
+    }
+
+    #endregion
 }

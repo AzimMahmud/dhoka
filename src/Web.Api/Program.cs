@@ -23,8 +23,9 @@ builder.Services.AddEndpoints(Assembly.GetExecutingAssembly());
 
 WebApplication app = builder.Build();
 
-app.MapEndpoints();
+app.UseRateLimiter();
 
+app.MapEndpoints();
 
 app.UseSwaggerWithUi();
 
@@ -34,11 +35,6 @@ if (app.Environment.IsDevelopment())
 
     // app.ApplyMigrations();
 }
-
-app.MapHealthChecks("health", new HealthCheckOptions
-{
-    ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
-});
 
 app.UseCors("MyPolicy");
 

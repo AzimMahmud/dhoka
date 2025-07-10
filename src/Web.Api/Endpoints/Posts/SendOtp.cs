@@ -10,20 +10,20 @@ internal sealed class SendOtp : IEndpoint
 {
     public sealed class Request
     {
-        public string PhoneNumber { get; set;}
-        
+        public string PhoneNumber { get; set; }
     }
 
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
-        app.MapPost("posts/{id:guid}/send-otp", async (Guid id, Request request, ISender sender,CancellationToken cancellationToken) =>
-            {
-                var command = new SendTokenCommand( id,request.PhoneNumber);
+        app.MapPost("posts/{id:guid}/send-otp",
+                async (Guid id, Request request, ISender sender, CancellationToken cancellationToken) =>
+                {
+                    var command = new SendTokenCommand(id, request.PhoneNumber);
 
-                Result<int> result =  await sender.Send(command, cancellationToken);
+                    Result<bool> result = await sender.Send(command, cancellationToken);
 
-                return result.Match(Results.Ok, CustomResults.Problem);
-            })
+                    return result.Match(Results.Ok, CustomResults.Problem);
+                })
             .WithTags(Tags.Posts);
     }
 }

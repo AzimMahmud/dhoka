@@ -2,4 +2,4 @@
 
 namespace Application.Posts.SendToken;
 
-public sealed record SendTokenCommand(Guid PostId, string PhoneNumber) : ICommand<int>;
+public sealed record SendTokenCommand(Guid PostId, string PhoneNumber) : ICommand<bool>;

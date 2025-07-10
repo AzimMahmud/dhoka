@@ -1,38 +1,36 @@
 ﻿using Application.Abstractions.Authentication;
-using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Domain.Users;
-using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
 namespace Application.Users.GetByEmail;
 
-internal sealed class GetUserByEmailQueryHandler(IApplicationDbContext context, IUserContext userContext)
+internal sealed class GetUserByEmailQueryHandler(IUserRepository userRepository, IUserContext userContext)
     : IQueryHandler<GetUserByEmailQuery, UserResponse>
 {
     public async Task<Result<UserResponse>> Handle(GetUserByEmailQuery query, CancellationToken cancellationToken)
     {
-        UserResponse? user = await context.Users
-            .Where(u => u.Email == query.Email)
-            .Select(u => new UserResponse
-            {
-                Id = u.Id,
-                FirstName = u.FirstName,
-                LastName = u.LastName,
-                Email = u.Email
-            })
-            .SingleOrDefaultAsync(cancellationToken);
+        User? user = await userRepository.GetByEmailAsync(query.Email);
 
-        if (user is null)
+        if (user.Id == Guid.Empty)
         {
             return Result.Failure<UserResponse>(UserErrors.NotFoundByEmail);
         }
 
         if (user.Id != userContext.UserId)
         {
-            return Result.Failure<UserResponse>(UserErrors.Unauthorized());
+            return Result.Failure<UserResponse>(UserErrors.Unauthorized);
         }
 
-        return user;
+        var userResponse = new UserResponse()
+        {
+            Id = user.Id,
+            Email = user.Email,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            Role = user.Role
+        };
+
+        return userResponse;
     }
 }

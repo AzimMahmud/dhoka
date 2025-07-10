@@ -14,7 +14,7 @@ internal sealed class AutoComplete : IEndpoint
         app.MapGet("posts/autocomplete", async ([AsParameters]AutocompleteRequest request, ISender sender, CancellationToken cancellationToken) =>
             {
                 var command = new AutoCompleteQuery(request);
-
+ 
                 Result<List<string>> result = await sender.Send(command, cancellationToken);
 
                 return result.Match(Results.Ok, CustomResults.Problem);

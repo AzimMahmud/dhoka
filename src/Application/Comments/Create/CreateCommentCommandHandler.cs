@@ -5,25 +5,19 @@ using SharedKernel;
 namespace Application.Comments.Create;
 
 internal sealed class CreateCommentCommandHandler(
-    ICommentRepository commentRepository,
-    IDateTimeProvider dateTimeProvider)
+    ICommentRepository commentRepository)
     : ICommandHandler<CreateCommentCommand, Guid>
 {
     public async Task<Result<Guid>> Handle(CreateCommentCommand command, CancellationToken cancellationToken)
     {
         var comment = new Comment
         {
+            Id = Guid.NewGuid(),
             PostId = command.PostId,
             ContactInfo = command.ContactInfo,
             Description = command.Description,
-            CreatedAt = dateTimeProvider.UtcNow
+            CreatedAt = DateTime.UtcNow
         };
-        //
-        // context.Comments.Add(comment);
-        //
-        // await context.SaveChangesAsync(cancellationToken);
-
-
         await commentRepository.CreateAsync(comment);
         return comment.Id;
     }

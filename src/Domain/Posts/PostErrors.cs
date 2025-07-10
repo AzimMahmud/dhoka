@@ -14,5 +14,9 @@ public static class PostErrors
     
     public static Error NotApproved(Guid postId) => Error.Conflict(
         "Posts.NotApproved",
-        $"The post with the Id = '{postId}' was not approve yet");
+        $"The post with the Id = '{postId}' was not approve yet"); 
+    
+    public static Error ImageNotUploaded(Guid postId) => Error.Conflict(
+        "Posts.ImageNotUploaded",
+        $"The images with the Id = '{postId}' was not Uploaded");
 }

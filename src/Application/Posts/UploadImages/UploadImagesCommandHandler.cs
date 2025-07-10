@@ -9,21 +9,31 @@ internal sealed class UploadImagesCommandHandler(IPostRepository postRepository,
 {
     public async Task<Result> Handle(UploadImagesCommand command, CancellationToken cancellationToken)
     {
-        Post? post =  await postRepository.GetByIdAsync(command.PostId);
-        
-        if (post is null)
+        Post? post = await postRepository.GetByIdAsync(command.PostId);
+
+        if (post.Id == Guid.Empty)
         {
             return Result.Failure(PostErrors.NotFound(command.PostId));
         }
 
+
         List<string> urls = await imageService.UploadImagesAsync(command.Images, command.PostId);
 
-        if (urls.Any())
+        if (!urls.Any())
+        {
+            return Result.Failure(PostErrors.ImageNotUploaded(post.Id));
+        }
+
+        if (post.ImageUrls != null && post.ImageUrls.Any())
+        {
+            post.ImageUrls.AddRange(urls);
+        }
+        else
         {
             post.ImageUrls = urls;
-        
-            await postRepository.UpdateAsync(post);
         }
+
+        await postRepository.UpdateAsync(post);
 
         return Result.Success("Image uploaded");
     }

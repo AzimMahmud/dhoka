@@ -1,15 +1,15 @@
-﻿using Application.Abstractions.Data;
-using Application.Abstractions.Messaging;
+﻿using Application.Abstractions.Messaging;
 using Domain.Tokens;
 using Domain.Users;
-using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
 namespace Application.Users.VerifyEmail;
 
 public sealed record VerifyEmailCommand(string Token) : ICommand<bool>;
 
-internal class VerifyEmailCommandHandler(IApplicationDbContext context) : ICommandHandler<VerifyEmailCommand, bool>
+internal class VerifyEmailCommandHandler(
+    IUserRepository userRepository,
+    IEmailVerificationTokenRepository emailVerificationTokenRepository) : ICommandHandler<VerifyEmailCommand, bool>
 {
     public async Task<Result<bool>> Handle(VerifyEmailCommand request, CancellationToken cancellationToken)
     {
@@ -18,21 +18,21 @@ internal class VerifyEmailCommandHandler(IApplicationDbContext context) : IComma
             return Result<bool>.ValidationFailure(UserErrors.TokenInvalid);
         }
 
-        EmailVerificationToken? emailVerification = await context.EmailVerificationTokens
-            .Include(e => e.User)
-            .FirstOrDefaultAsync(e => e.Id == token, cancellationToken: cancellationToken);
+        EmailVerificationToken? emailVerification = await emailVerificationTokenRepository.GetByIdAsync(token);
 
-        if (emailVerification is null || emailVerification.ExpiresOnUtc < DateTime.UtcNow ||
-            emailVerification.User.EmailVerified)
+
+        User user = await userRepository.GetByIdAsync(emailVerification.UserId);
+
+        if (emailVerification.ExpiresOnUtc < DateTime.UtcNow || user.EmailVerified)
         {
             return false;
         }
 
-        emailVerification.User.EmailVerified = true;
+        user.EmailVerified = true;
 
-        context.EmailVerificationTokens.Remove(emailVerification);
+        await emailVerificationTokenRepository.DeleteAsync(emailVerification.Id);
 
-        await context.SaveChangesAsync(cancellationToken);
+        await userRepository.UpdateAsync(user);
 
         return true;
     }

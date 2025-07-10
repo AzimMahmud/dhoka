@@ -20,7 +20,7 @@ public class S3Service(IAmazonS3 s3Client, IAmazonCloudFront cloudFrontClient, I
         IEnumerable<Task<string>> uploadTasks = files.Select(async file =>
         {
             string objectKey = $"{postId}/{Guid.NewGuid():N}{Path.GetExtension(file.FileName)}";
-        
+
             var request = new PutObjectRequest
             {
                 BucketName = _bucketName,
@@ -30,7 +30,8 @@ public class S3Service(IAmazonS3 s3Client, IAmazonCloudFront cloudFrontClient, I
                 CannedACL = S3CannedACL.Private
             };
 
-           PutObjectResponse? res = await s3Client.PutObjectAsync(request);
+            await s3Client.PutObjectAsync(request);
+
             return $"https://{_cloudFrontDomain}/{objectKey}";
         });
 

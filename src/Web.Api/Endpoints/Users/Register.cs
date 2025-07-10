@@ -9,7 +9,7 @@ namespace Web.Api.Endpoints.Users;
 
 internal sealed class Register : IEndpoint
 {
-    public sealed record Request(string Email, string FirstName, string LastName);
+    public sealed record Request(string Email, string FirstName, string LastName, string Password, string ConfirmPassword, string Role);
 
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
@@ -18,7 +18,10 @@ internal sealed class Register : IEndpoint
             var command = new RegisterUserCommand(
                 request.Email,
                 request.FirstName,
-                request.LastName);
+                request.LastName, 
+                request.Password,
+                request.ConfirmPassword,
+                request.Role);
 
             Result<Guid> result = await sender.Send(command, cancellationToken);
 

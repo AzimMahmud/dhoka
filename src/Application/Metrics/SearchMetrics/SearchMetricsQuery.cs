@@ -2,6 +2,8 @@
 using Domain.Posts;
 using Microsoft.Extensions.Caching.Memory;
 using SharedKernel;
+using Humanizer;
+using Status = Domain.Posts.Status;
 
 namespace Application.Metrics.SearchMetrics;
 
@@ -12,17 +14,39 @@ internal class SearchMetricsQueryHandler(IPostCounterRepository repository, IMem
 {
     public async Task<Result<SearchMetricDto>> Handle(SearchMetricsQuery request, CancellationToken cancellationToken)
     {
-        return new SearchMetricDto
+        // 1. Kick off all count queries in parallel:
+        Task<int> totalSearchesTask      = TotalSearches();
+        Task<int> totalPostsTask         = TotalPosts();
+        Task<int> totalApprovedPostsTask = TotalApprovedPosts();
+        Task<int> totalSettledPostsTask  = TotalSettledPosts();
+
+        await Task.WhenAll(
+            totalSearchesTask,
+            totalPostsTask,
+            totalApprovedPostsTask,
+            totalSettledPostsTask
+        );
+
+        // 2. Extract raw integers
+        int totalSearches       = await totalSearchesTask;
+        int totalPosts          = await totalPostsTask;
+        int totalApprovedPosts  = await totalApprovedPostsTask;
+        int totalSettledPosts   = await totalSettledPostsTask;
+
+        // 3. Build DTO with metric‐formatted strings
+        var dto = new SearchMetricDto
         {
-            TotalSearches = await TotalSearches(),
-            TotalPosts = await TotalPosts(),
-            TotalApprovedPosts = await TotalApprovedPosts(),
-            TotalSettledPosts = await TotalSettledPosts(),
+            TotalSearches      = totalSearches.ToMetric(),
+            TotalPosts         = totalPosts.ToMetric(),
+            TotalApprovedPosts = totalApprovedPosts.ToMetric(),
+            TotalSettledPosts  = totalSettledPosts.ToMetric(),
         };
+
+        // 4. Wrap in Result<T>. 
+        return Result.Success(dto);
     }
-    
-    
-    
+
+
     private async Task<int> GetMetricAsync(string key, Func<Task<int>> fetch)
     {
         return await cache.GetOrCreateAsync(key, entry =>

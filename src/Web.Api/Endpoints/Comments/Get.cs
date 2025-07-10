@@ -13,7 +13,7 @@ internal sealed class Get : IEndpoint
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
         app.MapGet("comments", async (Guid postId,
-                int pageSize, string paginationToken, ISender sender, CancellationToken cancellationToken) =>
+                int pageSize, string? paginationToken, ISender sender, CancellationToken cancellationToken) =>
         {
             var command = new GetCommentsQuery(postId,  pageSize, paginationToken);
 

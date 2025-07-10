@@ -1,4 +1,4 @@
-﻿using Application.Posts.Get;
+﻿using Application.Posts.Admin.Get;
 using Domain;
 using Domain.Roles;
 using MediatR;

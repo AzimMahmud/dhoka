@@ -1,5 +1,8 @@
-﻿using Application.Users.Get;
+﻿using Amazon.CloudFront.Model;
+using Application.Users.Get;
+using Domain;
 using Domain.Roles;
+using Domain.Users;
 using MediatR;
 using SharedKernel;
 using Web.Api.Extensions;
@@ -11,15 +14,11 @@ internal sealed class Get : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
-        app.MapGet("users", async (string? searchTerm,
-                string? sortColumn,
-                string? sortOrder,
-                int page,
-                int pageSize, ISender sender, CancellationToken cancellationToken) =>
+        app.MapGet("users", async (int pageSize, string? paginationToken, string status, ISender sender, CancellationToken cancellationToken) =>
         {
-            var query = new GetUsersQuery(searchTerm, sortColumn, sortOrder, page, pageSize);
+            var query = new GetUsersQuery(pageSize, paginationToken, status);
 
-            Result<PagedList<UsersResponse>> result = await sender.Send(query, cancellationToken);
+            Result<PagedResult<UsersResponse>> result = await sender.Send(query, cancellationToken);
 
             return result.Match(Results.Ok, CustomResults.Problem);
         })

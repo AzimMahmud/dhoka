@@ -1,4 +1,4 @@
-﻿using Application.Posts.Get;
+﻿using Application.Posts.Admin.Get;
 using MediatR;
 using SharedKernel;
 

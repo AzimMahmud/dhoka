@@ -4,7 +4,7 @@ using SharedKernel;
 
 namespace Application.Posts.AutoComplete;
 
-public class AutoCompleteQueryHandler(IPostRepository postRepository, IDateTimeProvider dateTimeProvider)     : IQueryHandler<AutoCompleteQuery, List<string>>
+public class AutoCompleteQueryHandler(IPostRepository postRepository)     : IQueryHandler<AutoCompleteQuery, List<string>>
 {
     public async Task<Result<List<string>>> Handle(AutoCompleteQuery request, CancellationToken cancellationToken)
     {

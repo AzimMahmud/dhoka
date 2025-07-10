@@ -1,4 +1,5 @@
-﻿using Application.Abstractions;
+﻿using System.Text;
+using Application.Abstractions;
 using Application.Abstractions.Messaging;
 using Domain.Posts;
 using SharedKernel;
@@ -7,38 +8,39 @@ namespace Application.Posts.SendToken;
 
 internal class SendTokenCommandHandler(
     IPostRepository postRepository,
-    IDateTimeProvider dateTimeProvider,
     ISmsSender smsSender)
-    : ICommandHandler<SendTokenCommand, int>
+    : ICommandHandler<SendTokenCommand, bool>
 {
-    public async Task<Result<int>> Handle(SendTokenCommand command, CancellationToken cancellationToken)
+    public async Task<Result<bool>> Handle(SendTokenCommand command, CancellationToken cancellationToken)
     {
-        Post? post =  await postRepository.GetByIdAsync(command.PostId);
-        
+        Post? post = await postRepository.GetByIdAsync(command.PostId);
+
         if (post is null)
         {
-            return Result.Failure<int>(PostErrors.NotFound(command.PostId));
+            return Result.Failure<bool>(PostErrors.NotFound(command.PostId));
         }
 
-        try
-        {
-            int otp = OptGenerator.GenerateOtpCode();
-            bool iSendSms = true;//await smsSender.SendSms(command.PhoneNumber, $"Your otp is {otp}");
 
-            if (iSendSms)
-            {
-                post.Otp = otp;
-                post.ContactNumber = command.PhoneNumber;
-                post.OtpExpirationTime = dateTimeProvider.UtcNow.AddMinutes(10);
-                
-                await postRepository.UpdateAsync(post);
-               
-            }
-            return Result.Success(otp);
-        }
-        catch(Exception ex)
+        var otpString = new StringBuilder();
+
+        int otp = OptGenerator.GenerateOtpCode();
+        otpString.Append($"Dhoka.io verification code is: {otp}\n");
+        otpString.Append("This code is valid for 5 minutes. Never share your OTP with anyone.\n");
+        otpString.Append("Thank you for helping build a scam free Bangladesh.");
+
+        bool iSendSms = await smsSender.SendSms(command.PhoneNumber, otpString.ToString());
+
+        if (!iSendSms)
         {
-            return Result.Success(0);
+            return Result.Success(false);
         }
+
+        post.Otp = otp;
+        post.ContactNumber = command.PhoneNumber;
+        post.OtpExpirationTime = DateTime.UtcNow.AddMinutes(10);
+
+        await postRepository.UpdateAsync(post);
+        return Result.Success(true);
+
     }
 }

@@ -3,7 +3,7 @@ using SharedKernel;
 
 namespace Domain.Tokens;
 
-public sealed class EmailVerificationToken : Entity
+public sealed class EmailVerificationToken
 {
     public Guid Id { get; set; }
 
@@ -12,6 +12,4 @@ public sealed class EmailVerificationToken : Entity
     public DateTime CreatedOnUtc { get; set; }
 
     public DateTime ExpiresOnUtc { get; set; }
-
-    public User User { get; set; }
 }

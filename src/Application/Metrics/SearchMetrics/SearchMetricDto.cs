@@ -1,9 +1,24 @@
 ﻿namespace Application.Metrics.SearchMetrics;
 
-public record SearchMetricDto
+public class SearchMetricDto
 {
-    public int TotalSearches {get; set;}
-    public int TotalPosts {get; set;}
-    public int TotalApprovedPosts {get; set;}
-    public int TotalSettledPosts {get; set;}
+    /// <summary>
+    /// e.g. "1.5K", "2K", "750"
+    /// </summary>
+    public string TotalSearches { get; set; } = default!;
+
+    /// <summary>
+    /// e.g. "3.2K", "890"
+    /// </summary>
+    public string TotalPosts { get; set; } = default!;
+
+    /// <summary>
+    /// e.g. "4.1K", "120"
+    /// </summary>
+    public string TotalApprovedPosts { get; set; } = default!;
+
+    /// <summary>
+    /// e.g. "2M", "540"
+    /// </summary>
+    public string TotalSettledPosts { get; set; } = default!;
 }

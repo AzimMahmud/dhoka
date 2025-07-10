@@ -1,4 +1,4 @@
-﻿using Application.Posts.Delete;
+﻿using Application.Posts.Admin.Delete;
 using Domain.Roles;
 using MediatR;
 using SharedKernel;

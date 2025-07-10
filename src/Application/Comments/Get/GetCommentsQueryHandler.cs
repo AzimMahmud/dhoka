@@ -14,49 +14,6 @@ internal sealed class GetCommentsQueryHandler(ICommentRepository commentReposito
         PagedResult<CommentsResponse> comments =
             await commentRepository.GetByPostIdPaginatedAsync(request.PostId, request.PageSize, request.PaginationToken);
 
-
-        //     IQueryable<Comment> commentsQuery = context.Comments;
-        //
-        //     if (!string.IsNullOrWhiteSpace(request.SearchTerm))
-        //     {
-        //         commentsQuery = commentsQuery.Where(p =>
-        //             p.PostId.ToString().Contains(request.SearchTerm));
-        //     }
-        //
-        //     if (request.SortOrder?.ToLower() == "desc")
-        //     {
-        //         commentsQuery = commentsQuery.OrderByDescending(GetSortProperty(request));
-        //     }
-        //     else
-        //     {
-        //         commentsQuery = commentsQuery.OrderBy(GetSortProperty(request));
-        //     }
-        //
-        //     IQueryable<CommentsResponse> productResponsesQuery = commentsQuery
-        //         .Select(p => new CommentsResponse
-        //         {
-        //             Id = p.Id,
-        //             PostId = p.PostId,
-        //             ContactInfo = p.ContactInfo,
-        //             Description = p.Description,
-        //             Created = p.CreatedAt
-        //         });
-        //
-        //     var posts = await PagedList<CommentsResponse>.CreateAsync(
-        //         productResponsesQuery,
-        //         request.Page,
-        //         request.PageSize);
-        //
-        //     return posts;
-
         return comments;
     }
-
-    //
-    // private static Expression<Func<Comment, object>> GetSortProperty(GetCommentsQuery request) =>
-    //     request.SortColumn?.ToLower() switch
-    //     {
-    //         "postId" => product => product.PostId,
-    //         _ => product => product.Id
-    //     };
 }

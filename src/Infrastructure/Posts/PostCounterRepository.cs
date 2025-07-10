@@ -2,6 +2,7 @@
 using Amazon.DynamoDBv2.DataModel;
 using Amazon.DynamoDBv2.Model;
 using Domain.Posts;
+using Infrastructure.Database;
 
 namespace Infrastructure.Posts;
 
@@ -31,7 +32,7 @@ public class PostCounterRepository(IAmazonDynamoDB dynamoDb) : IPostCounterRepos
     {
         var request = new UpdateItemRequest
         {
-            TableName = "PostCounters",
+            TableName =  Tables.PostCounters,
             Key = new Dictionary<string, AttributeValue>
             {
                 { "CounterType", new AttributeValue { S = counterType } }

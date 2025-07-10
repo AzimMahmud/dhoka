@@ -4,12 +4,13 @@ using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 using Domain;
 using Domain.Comments;
+using Infrastructure.Database;
 
 namespace Infrastructure.Comments;
 
 public class CommentRepository(IAmazonDynamoDB dynamoDb) : ICommentRepository
 {
-    private const string TableName = "Comments";
+ 
 
     public async Task CreateAsync(Comment comment)
     {
@@ -24,7 +25,7 @@ public class CommentRepository(IAmazonDynamoDB dynamoDb) : ICommentRepository
 
         var request = new PutItemRequest
         {
-            TableName = TableName,
+            TableName = Tables.Comments,
             Item = item
         };
 
@@ -35,7 +36,7 @@ public class CommentRepository(IAmazonDynamoDB dynamoDb) : ICommentRepository
     {
         var request = new GetItemRequest
         {
-            TableName = TableName,
+            TableName = Tables.Comments,
             Key = new Dictionary<string, AttributeValue>
             {
                 ["Id"] = new AttributeValue { S = id.ToString() }
@@ -66,7 +67,7 @@ public class CommentRepository(IAmazonDynamoDB dynamoDb) : ICommentRepository
 
         var request = new QueryRequest
         {
-            TableName = TableName,
+            TableName = Tables.Comments,
             IndexName = "PostId-index", // Must match GSI name
             KeyConditionExpression = "PostId = :v_PostId",
             ExpressionAttributeValues = new Dictionary<string, AttributeValue>
@@ -91,7 +92,7 @@ public class CommentRepository(IAmazonDynamoDB dynamoDb) : ICommentRepository
     {
         var request = new DeleteItemRequest
         {
-            TableName = TableName,
+            TableName = Tables.Comments,
             Key = new Dictionary<string, AttributeValue>
             {
                 ["Id"] = new AttributeValue { S = id.ToString() }
@@ -111,7 +112,7 @@ public class CommentRepository(IAmazonDynamoDB dynamoDb) : ICommentRepository
 
         var request = new QueryRequest
         {
-            TableName = "Comments",
+            TableName = Tables.Comments,
             IndexName = "PostId-index", // Ensure this GSI exists
             KeyConditionExpression = "PostId = :postId",
             ExpressionAttributeValues = new Dictionary<string, AttributeValue>
