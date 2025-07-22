@@ -7,8 +7,8 @@
     <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Serilog" />
-    <PackageReference Include="Quartz.Extensions.Hosting"/>
-    <PackageReference Include="Quartz.Serialization.Json"/>
+    <PackageReference Include="Quartz.Extensions.Hosting" />
+    <PackageReference Include="Quartz.Serialization.Json" />
   </ItemGroup>
 
   <ItemGroup>
