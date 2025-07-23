@@ -1,22 +1,22 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <ItemGroup>
-        <PackageReference Include="AspNetCore.HealthChecks.NpgSql"/>
-        <PackageReference Include="AWSSDK.CloudFront"/>
+        <PackageReference Include="AspNetCore.HealthChecks.NpgSql" />
+        <PackageReference Include="AWSSDK.CloudFront" />
         <PackageReference Include="AWSSDK.DynamoDBv2" />
-        <PackageReference Include="AWSSDK.S3"/>
-        <PackageReference Include="EFCore.NamingConventions"/>
+        <PackageReference Include="AWSSDK.S3" />
+        <PackageReference Include="EFCore.NamingConventions" />
         <PackageReference Include="Mailjet.Api" />
-        <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer"/>
-        <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks"/>
-        <PackageReference Include="Newtonsoft.Json"/>
+        <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+        <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" />
+        <PackageReference Include="Newtonsoft.Json" />
         <PackageReference Include="OpenSearch.Client" />
         <PackageReference Include="OpenSearch.Net.Auth.AwsSigV4" />
         <PackageReference Include="Polly" />
     </ItemGroup>
 
     <ItemGroup>
-        <InternalsVisibleTo Include="ArchitectureTests"/>
+        <InternalsVisibleTo Include="ArchitectureTests" />
     </ItemGroup>
 
     <ItemGroup>
