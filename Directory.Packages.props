@@ -48,7 +48,7 @@
     <!-- OpenAPI / Swagger -->
     <PackageVersion Include="Swashbuckle.AspNetCore" Version="7.3.2" />
     <!-- Analysis & Testing -->
-    <PackageVersion Include="SonarAnalyzer.CSharp" Version="10.7.0.110445" />
+    <PackageVersion Include="SonarAnalyzer.CSharp" Version="10.15.0.120848" />
     <PackageVersion Include="Shouldly" Version="4.3.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
     <PackageVersion Include="NetArchTest.Rules" Version="1.3.2" />
