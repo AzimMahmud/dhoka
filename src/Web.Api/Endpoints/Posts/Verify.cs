@@ -27,7 +27,7 @@ internal sealed class Verify : IEndpoint
 
         public string PaymentDetails { get; set; }
 
-        public DateTime ScamDateTime { get; set; }
+        public string ScamDateTime { get; set; }
         
         public string AnonymityPreference { get; set; }
 

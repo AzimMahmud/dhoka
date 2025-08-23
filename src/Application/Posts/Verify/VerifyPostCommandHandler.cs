@@ -41,6 +41,17 @@ internal sealed class VerifyPostCommandHandler(
             return Result.Failure<Guid>(new Error("400", "Otp expired", ErrorType.Validation));
         }
 
+
+        if (!string.IsNullOrEmpty(command.ScamDateTime))
+        {
+            if (!DateTime.TryParse(command.ScamDateTime, out DateTime dateTime))
+            {
+                return Result.Failure<Guid>(new Error("400", "Invalid Scam date time", ErrorType.Validation));
+            }
+
+            post.ScamDateTime = dateTime;
+        }
+        
         
 
         post.ScamType = command.ScamType;
@@ -50,7 +61,6 @@ internal sealed class VerifyPostCommandHandler(
         post.MobileNumbers = command.MobileNumbers;
         post.Amount = command.Amount;
         post.PaymentDetails = command.PaymentDetails;
-        post.ScamDateTime = command.ScamDateTime;
         post.AnonymityPreference = command.AnonymityPreference;
         post.Name = command.Name;
         post.ContactNumber = command.ContactNumber;
@@ -64,7 +74,7 @@ internal sealed class VerifyPostCommandHandler(
         cache.Set(
             command.ContactNumber,
             command.ContactNumber,
-            TimeSpan.FromMinutes(20)
+            TimeSpan.FromMinutes(3)
         );
 
         return post.Id;

@@ -327,8 +327,7 @@ public partial class PostRepository : IPostRepository
     public async Task EnsurePostIndexedAsync(Guid id)
     {
         _logger.LogInformation($"Ensuring post {id} is indexed in OpenSearch.");
-        GetResponse<IndexedPost>? getResponse = await _retryPolicy.ExecuteAsync(async () =>
-            await _openSearchClient.GetAsync<IndexedPost>(id.ToString(), g => g.Index(IndexName)));
+        GetResponse<IndexedPost>? getResponse =  await _openSearchClient.GetAsync<IndexedPost>(id.ToString(), g => g.Index(IndexName));
 
         if (getResponse.IsValid && getResponse.Source != null)
         {

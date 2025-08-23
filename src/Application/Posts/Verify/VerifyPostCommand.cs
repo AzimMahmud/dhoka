@@ -17,7 +17,7 @@ public sealed class VerifyPostCommand : ICommand<Guid>
     
     public List<string> MobileNumbers { get; set; } = new List<string>();
     
-    public DateTime? ScamDateTime { get; set; }
+    public string ScamDateTime { get; set; }
     public decimal Amount { get; set; }
     
     public string PaymentDetails { get; set; }
